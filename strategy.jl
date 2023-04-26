@@ -7,9 +7,9 @@ function selectaction(strategy::εGreedyStrategy, m::AbstractModel, state; rng::
     qvalues = usegpu ? Flux.cpu(qvalues) : qvalues
 
     if rand(rng) > strategy.ε
-        action = argmax(qvalues) - 1
+        action = argmax(qvalues) 
     else
-        action = rand(0:(length(qvalues) - 1))
+        action = rand(rng, Base.OneTo(length(qvalues)))
     end
 
     return action

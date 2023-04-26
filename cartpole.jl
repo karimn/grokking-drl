@@ -1,4 +1,6 @@
-mutable struct CartPoleEnv <: AbstractEnv
+
+
+#=mutable struct CartPoleEnv <: AbstractEnv
     pyenv::PyCall.PyObject
     currstate
     lastreward
@@ -27,3 +29,7 @@ spacedim(env::CartPoleEnv) = length(env.currstate)
 function (env::CartPoleEnv)(action) 
     env.currstate, env.lastreward, env.terminated, env.truncated = env.pyenv.step(action) 
 end
+=#
+
+nactions(::CartPoleEnv) = 2
+spacedim(::CartPoleEnv) = 4 

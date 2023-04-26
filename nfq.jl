@@ -33,7 +33,7 @@ function train!(loss, m::FCQ, data, actions)
 
     val, grads = Flux.withgradient(m.model) do m
         fullresult = m(input) |> Flux.cpu
-        result = [r[a + 1] for (r, a) in zip(eachcol(fullresult), actions)]
+        result = [r[a] for (r, a) in zip(eachcol(fullresult), actions)]
         loss(result, label)
     end
 
@@ -83,7 +83,7 @@ function train!(agent::NFQ{M}, env::AbstractEnv, gamma::Float64, maxminutes::Int
             episodereward[end] += curr_reward = reward(env)
             episodetimestep[end] += 1
             isterminal = is_terminated(env)
-            istruncated = is_truncated(env)
+            istruncated = false # is_truncated(env)
 
             push!(experiences, (s = currstate, a = action, r = curr_reward, sp = newstate, failure = isterminal && !istruncated))
             currstate = newstate
