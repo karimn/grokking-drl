@@ -1,0 +1,5 @@
+[deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
+Pipe = "b98c9c47-44ae-5843-9183-064241ee97a0"
+PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
