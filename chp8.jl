@@ -7,6 +7,7 @@ using Pipe
 include("abstract.jl")
 include("cartpole.jl")
 include("strategy.jl")
+include("drl-algo.jl")
 include("fcq.jl")
 include("nfq.jl")
 
