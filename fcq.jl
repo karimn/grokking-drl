@@ -45,29 +45,25 @@ function train!(loss, m::FCQ, data, actions)
     Flux.update!(m.opt, m.model, grads[1])
 end
 
-function optimizemodel!(onlinemodel::FCQ, experiences, epochs, gamma; targetmodel::FCQ = onlinemodel, usegpu = true) 
-    actions = [e.a for e in experiences]
+function optimizemodel!(onlinemodel::FCQ, experiences::B, epochs, gamma; targetmodel::FCQ = onlinemodel, usegpu = true) where B <: AbstractBuffer
+    batch = getbatch(experiences)
+
+    actions = batch.a # [e.a for e in experiences]
 
     for _ in epochs
-        max_a_q_sp = @pipe mapreduce(permutedims, vcat, [e.sp for e in experiences]) |>
+        max_a_q_sp = @pipe mapreduce(permutedims, vcat, batch.sp) |>
             permutedims |>
             (usegpu ? Flux.gpu(_) : _) |> 
             targetmodel |>
             maximum(_, dims = 1) |> 
             Flux.cpu
 
-        target_q_s = [e.r + gamma * q * (!e.failure) for (e, q) in zip(experiences, max_a_q_sp)]
+        target_q_s = [r + gamma * q * (!failure) for (r, q, failure) in zip(batch.r, max_a_q_sp, batch.failure)]
 
-        @pipe mapreduce(permutedims, vcat, [e.s for e in experiences]) |>
+        @pipe mapreduce(permutedims, vcat, batch.s) |> # [e.s for e in experiences]) |>
             permutedims |>
             (usegpu ? Flux.gpu(_) : _) |> 
             (_, target_q_s) |> 
             train!(Flux.mse, onlinemodel, _, actions)  
-            #  train!(agent.onlinemodel, _) do m, x, y
-            #      results = m(x)
-
-            #      Flux.mse([r[e.a] for (r, e) in zip(eachcol(results), experiences)], target_q_s)
-            #  end |> 
-            #(usegpu ? Flux.cpu(_) : _)
     end
 end
