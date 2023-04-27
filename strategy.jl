@@ -68,7 +68,7 @@ mutable struct εGreedyExpStrategy <: AbstractStrategy
 end
 
 function εGreedyExpStrategy(ε::Float64, min_ε::Float64, decaysteps::Int)  
-    decayed_ε = (0.01 / exp.(-2, 0, decaysteps)[1:(end-1)] - 0.01) * (ε - min_ε) + min_ε
+    decayed_ε = (0.01 ./ exp.(range(-2, 0, decaysteps)) .- 0.01) * (ε - min_ε) .+ min_ε
     εGreedyExpStrategy(ε, min_ε, decaysteps, ε, 0, decayed_ε)
 end
 
