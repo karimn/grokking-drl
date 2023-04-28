@@ -3,7 +3,7 @@ struct εGreedyStrategy <: AbstractStrategy
 end
 
 function selectaction(strategy::S, m::AbstractModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
-    qvalues = m(usegpu ? Flux.gpu(state) : state)
+    qvalues = @pipe Vector{Float32}(state) |> m(usegpu ? Flux.gpu(_) : _)
     qvalues = usegpu ? Flux.cpu(qvalues) : qvalues
     explored = false
 
