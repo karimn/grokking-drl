@@ -17,7 +17,7 @@ function selectaction(strategy::S, m::AbstractModel, state; rng::AbstractRNG = G
     return action, explored
 end
 
-function evaluate_model(strategy::S, m::AbstractModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+function evaluate(strategy::S, m::AbstractModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
     rs = []
 
     for _ in 1:nepisodes

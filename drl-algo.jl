@@ -51,11 +51,11 @@ function train!(agent::A, env::AbstractEnv, gamma::Float64, maxminutes::Int, max
             isterminal && break
         end
 
-        evalscore, _ = evaluate_model(agent.evalstrategy, agent.onlinemodel, env::AbstractEnv, nepisodes = 100, usegpu = usegpu)
+        evalscore, _ = evaluate(agent.evalstrategy, agent.onlinemodel, env::AbstractEnv, nepisodes = 100, usegpu = usegpu)
         push!(evalscores, evalscore)     
 
         push!(results, EpisodeResult(sum(episodetimestep), Statistics.mean(last(episodereward, 100)), Statistics.mean(last(evalscores, 100))))
     end
 
-    return results, evaluate_model(agent.evalstrategy, agent.onlinemodel, env::AbstractEnv, nepisodes = 100, usegpu = usegpu)
+    return results, evaluate(agent.evalstrategy, agent.onlinemodel, env::AbstractEnv, nepisodes = 100, usegpu = usegpu)
 end
