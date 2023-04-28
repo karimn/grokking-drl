@@ -2,13 +2,13 @@
 mutable struct NFQ <: AbstractDRLAlgorithm
     hiddendims::Vector{Int}
     valueopt::Flux.Optimise.AbstractOptimiser
-    trainstrategy::AbstractStrategy
-    evalstrategy::AbstractStrategy
+    # trainstrategy::AbstractStrategy
+    # evalstrategy::AbstractStrategy
     #batchsize::Int
     epochs::Int
     onlinemodel::Union{Nothing, FCQ}
 
-    NFQ(hiddendims, valueopt, trainstrategy, evalstrategy, epochs) = new(hiddendims, valueopt, trainstrategy, evalstrategy, epochs, nothing) 
+    NFQ(hiddendims, valueopt, epochs) = new(hiddendims, valueopt, epochs, nothing) 
 end
 
 function initmodels!(agent::NFQ, sdims, nactions; usegpu = true) 

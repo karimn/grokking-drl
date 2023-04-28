@@ -4,7 +4,7 @@ struct EpisodeResult
     mean100evalscore
 end
 
-function train!(agent::A, env::AbstractEnv, gamma::Float64, maxminutes::Int, maxepisodes::Int, ::Type{B}; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {A <: AbstractDRLAlgorithm, B <: AbstractBuffer}
+function train!(agent::A, env::AbstractEnv, trainstrategy::AbstractStrategy, evalstrategy::AbstractStrategy, gamma::Float64, maxminutes::Int, maxepisodes::Int, ::Type{B}; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {A <: AbstractDRLAlgorithm, B <: AbstractBuffer}
     nS, nA = spacedim(env), nactions(env)
 
     initmodels!(agent, nS, nA, usegpu = usegpu)
@@ -31,8 +31,8 @@ function train!(agent::A, env::AbstractEnv, gamma::Float64, maxminutes::Int, max
             step += 1
 
             # Interaction step
-            action, explored = selectaction(agent.trainstrategy, agent.onlinemodel, currstate, rng = rng, usegpu = usegpu)
-            decay!(agent.trainstrategy)
+            action, explored = selectaction(trainstrategy, agent.onlinemodel, currstate, rng = rng, usegpu = usegpu)
+            decay!(trainstrategy)
             env(action)
             newstate = Vector{Float32}(state(env))
             episodereward[end] += curr_reward = reward(env)
@@ -51,11 +51,11 @@ function train!(agent::A, env::AbstractEnv, gamma::Float64, maxminutes::Int, max
             isterminal && break
         end
 
-        evalscore, _ = evaluate(agent.evalstrategy, agent.onlinemodel, env::AbstractEnv, nepisodes = 100, usegpu = usegpu)
+        evalscore, _ = evaluate(evalstrategy, agent.onlinemodel, env::AbstractEnv, nepisodes = 100, usegpu = usegpu)
         push!(evalscores, evalscore)     
 
         push!(results, EpisodeResult(sum(episodetimestep), Statistics.mean(last(episodereward, 100)), Statistics.mean(last(evalscores, 100))))
     end
 
-    return results, evaluate(agent.evalstrategy, agent.onlinemodel, env::AbstractEnv, nepisodes = 100, usegpu = usegpu)
+    return results, evaluate(evalstrategy, agent.onlinemodel, env::AbstractEnv, nepisodes = 100, usegpu = usegpu)
 end

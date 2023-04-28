@@ -16,6 +16,6 @@ include("nfq.jl")
 
 env = CartPoleEnv()
 
-agent = NFQ([512, 128], Flux.RMSProp(0.0005), εGreedyStrategy(0.5), GreedyStrategy(), 40)
+agent = NFQ([512, 128], Flux.RMSProp(0.0005), 40)
 
-train!(agent, env, 1.0, 20, 10_000, Buffer{1024}, usegpu = true)
+train!(agent, env, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, Buffer{1024}, usegpu = true)

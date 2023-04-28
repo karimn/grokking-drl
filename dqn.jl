@@ -1,14 +1,14 @@
 mutable struct DQN <: AbstractDRLAlgorithm
     hiddendims::Vector{Int}
     valueopt::Flux.Optimise.AbstractOptimiser
-    trainstrategy::AbstractStrategy
-    evalstrategy::AbstractStrategy
+    # trainstrategy::AbstractStrategy
+    # evalstrategy::AbstractStrategy
     epochs::Int
     updatemodelsteps::Int
     targetmodel::Union{Nothing, FCQ}
     onlinemodel::Union{Nothing, FCQ}
 
-    DQN(hiddendims, valueopt, trainstrategy, evalstrategy, epochs, updatemodelsteps) = new(hiddendims, valueopt, trainstrategy, evalstrategy, epochs, updatemodelsteps, nothing, nothing) 
+    DQN(hiddendims, valueopt, epochs, updatemodelsteps) = new(hiddendims, valueopt, epochs, updatemodelsteps, nothing, nothing) 
 end
 
 function optimizemodel!(agent::DQN, experiences::B, gamma, step; usegpu = true) where B <: AbstractBuffer 

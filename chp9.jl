@@ -21,13 +21,13 @@ bestscore = 0
 bestagent = nothing
 dqnresults = []
 
-@showprogress for _ in 1:5
-    agent = DQN([512, 128], Flux.RMSProp(0.0005), εGreedyStrategy(0.5), GreedyStrategy(), 40, 10)
-    #results, (evalscore, _) = train!(agent, env, 1.0, 20, 10_000, Buffer{1024}, usegpu = false)
-    results, (evalscore, _) = train!(agent, env, 1.0, 20, 10_000, ReplayBuffer{50_000, 2}, usegpu = false)
+@showprogress for _ in 1:1
+    agent = DQN([512, 128], Flux.RMSProp(0.0005), 40, 10)
+    #results, (evalscore, _) = train!(agent, env, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, Buffer{1024}, usegpu = false)
+    results, (evalscore, _) = train!(agent, env, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, ReplayBuffer{50_000, 64}, usegpu = true)
     push!(dqnresults, results)
 
-    if evalscore > bestscore
+    if evalscore >= bestscore
         global bestscore = evalscore
         global bestagent = agent
     end
