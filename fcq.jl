@@ -67,3 +67,8 @@ function optimizemodel!(onlinemodel::FCQ, experiences::B, epochs, gamma; targetm
             train!(Flux.mse, onlinemodel, _, actions)  
     end
 end
+
+function save(m::FCQ, filename) 
+    model = m.model |> Flux.cpu
+    BSON.@save filename model
+end

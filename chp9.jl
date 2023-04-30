@@ -6,6 +6,7 @@ using Pipe
 using ProgressMeter
 using StatsBase: sample
 using DataFrames
+using BSON
 
 include("abstract.jl")
 include("cartpole.jl")
@@ -13,18 +14,16 @@ include("strategy.jl")
 include("buffers.jl")
 include("drl-algo.jl")
 include("fcq.jl")
-include("nfq.jl")
-include("dqn.jl")
+include("learners.jl")
 
 env = CartPoleEnv()
 bestscore = 0
 bestagent = nothing
 dqnresults = []
 
-@showprogress for _ in 1:1
-    agent = DQN([512, 128], Flux.RMSProp(0.0005), 40, 10)
-    #results, (evalscore, _) = train!(agent, env, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, Buffer{1024}, usegpu = false)
-    results, (evalscore, _) = train!(agent, env, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, ReplayBuffer{50_000, 64}, usegpu = true)
+@showprogress for _ in 1:5
+    learner = DoubleLearner(env, [512, 128], Flux.RMSProp(0.0005), 40, 10, usegpu = true)
+    results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, ReplayBuffer{50_000, 64}, usegpu = true)
     push!(dqnresults, results)
 
     if evalscore >= bestscore

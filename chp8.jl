@@ -5,17 +5,18 @@ using ReinforcementLearningBase, ReinforcementLearningCore, ReinforcementLearnin
 using Pipe
 using StatsBase: sample
 using DataFrames
+using BSON
 
-include("abstract.jl")
 include("cartpole.jl")
+include("abstract.jl")
 include("strategy.jl")
 include("buffers.jl")
-include("drl-algo.jl")
 include("fcq.jl")
-include("nfq.jl")
+include("learners.jl")
+include("drl-algo.jl")
 
 env = CartPoleEnv()
 
-agent = NFQ([512, 128], Flux.RMSProp(0.0005), 40)
+learner = DelayedLearner(env, [512, 128], Flux.RMSProp(0.0005), 40, usegpu = true)
 
-train!(agent, env, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, Buffer{1024}, usegpu = true)
+train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, Buffer{1024}, usegpu = true)
