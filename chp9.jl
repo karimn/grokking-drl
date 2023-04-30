@@ -22,7 +22,7 @@ bestagent = nothing
 dqnresults = []
 
 @showprogress for _ in 1:5
-    learner = DoubleLearner(env, [512, 128], Flux.RMSProp(0.0005), 40, 10, usegpu = true)
+    learner = DQNLearner(env, [512, 128], Flux.RMSProp(0.0005), 40, 10, usegpu = true)
     results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, ReplayBuffer{50_000, 64}, usegpu = true)
     push!(dqnresults, results)
 
