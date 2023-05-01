@@ -27,7 +27,7 @@ end
 
 (m::FCQ)(state) = m.model(state) 
 
-function train!(loss, m::FCQ, data, actions) 
+function train!(loss, m::M, data, actions) where M <: AbstractModel 
     #Flux.train!(loss, m.model, data, m.opt) 
     
     input, label = data 
@@ -45,7 +45,7 @@ function train!(loss, m::FCQ, data, actions)
     Flux.update!(m.opt, m.model, grads[1])
 end
 
-function optimizemodel!(onlinemodel::FCQ, experiences::B, epochs, gamma; targetmodel::FCQ = onlinemodel, argmaxmodel = targetmodel, usegpu = true) where B <: AbstractBuffer
+function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmodel::M = onlinemodel, argmaxmodel::M = targetmodel, usegpu = true) where {B <: AbstractBuffer, M <: AbstractModel}
     batch = getbatch(experiences)
 
     actions = batch.a # [e.a for e in experiences]
@@ -71,7 +71,7 @@ function optimizemodel!(onlinemodel::FCQ, experiences::B, epochs, gamma; targetm
     end
 end
 
-function save(m::FCQ, filename) 
+function save(m::M, filename) where M <: AbstractModel
     model = m.model |> Flux.cpu
     BSON.@save filename model
 end
