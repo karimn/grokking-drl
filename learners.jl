@@ -27,18 +27,19 @@ mutable struct DQNLearner{E} <: AbstractLearner where {E <: AbstractEnv}
     epochs::Int
     env::E
     updatemodelsteps::Int
+    isdoublelearner::Bool
 end
 
-function DQNLearner(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser, epochs::Int, updatemodelsteps::Int; usegpu = true) where {E <: AbstractEnv}
+function DQNLearner(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser, epochs::Int, updatemodelsteps::Int; isdouble = false, usegpu = true) where {E <: AbstractEnv}
     nS, nA = spacedim(env), nactions(env)
     onlinemodel = FCQ(nS, nA, opt; hiddendims, usegpu = usegpu)
     targetmodel = FCQ(nS, nA, opt; hiddendims, usegpu = usegpu)
 
-    return DQNLearner{E}(onlinemodel, targetmodel, epochs, env, updatemodelsteps)
+    return DQNLearner{E}(onlinemodel, targetmodel, epochs, env, updatemodelsteps, isdouble)
 end
 
 function optimizemodel!(learner::DQNLearner, experiences::B, gamma, step; usegpu = true) where B <: AbstractBuffer 
-    optimizemodel!(learner.onlinemodel, experiences, learner.epochs, gamma, targetmodel = learner.targetmodel, usegpu = usegpu)
+    optimizemodel!(learner.onlinemodel, experiences, learner.epochs, gamma, argmaxmodel = learner.isdoublelearner ? learner.onlinemodel : learner.targetmodel, targetmodel = learner.targetmodel, usegpu = usegpu)
 
     if (step % learner.updatemodelsteps) == 0 
         learner.targetmodel = deepcopy(learner.onlinemodel) 

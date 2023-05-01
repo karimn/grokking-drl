@@ -1,12 +1,10 @@
 import Flux, CUDA
 import Statistics
-using Random
+using Random, Base.Threads, Pipe, BSON
 using ReinforcementLearningBase, ReinforcementLearningCore, ReinforcementLearningEnvironments
-using Pipe
 using ProgressMeter
 using StatsBase: sample
 using DataFrames
-using BSON
 
 include("abstract.jl")
 include("cartpole.jl")
@@ -21,13 +19,22 @@ bestscore = 0
 bestagent = nothing
 dqnresults = []
 
-@showprogress for _ in 1:5
-    learner = DQNLearner(env, [512, 128], Flux.RMSProp(0.0005), 40, 10, usegpu = true)
-    results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, ReplayBuffer{50_000, 64}, usegpu = true)
+usegpu = true 
+numlearners = 5
+
+prog = Progress(numlearners)
+
+@threads for _ in 1:numlearners
+    learner = DQNLearner(env, [512, 128], Flux.RMSProp(0.0005), 40, 10; isdouble = true, usegpu)
+    results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, ReplayBuffer{50_000, 64}; usegpu)
     push!(dqnresults, results)
 
     if evalscore >= bestscore
         global bestscore = evalscore
-        global bestagent = agent
+        global bestagent = learner 
     end
+
+    next!(prog)
 end
+
+finish!(prog)
