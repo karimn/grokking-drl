@@ -56,17 +56,14 @@ function optimizemodel!(onlinemodel::FCQ, experiences::B, epochs, gamma; targetm
             (usegpu ? Flux.gpu(_) : _) 
 
         argmax_a_q_sp = @pipe argmaxmodel(sp) |>
-            argmax(_, dims = 1)
-            #maximum(_, dims = 1) |> 
-            #Flux.cpu
+            argmax(_, dims = 1) |> 
+            Flux.cpu
 
-        q_sp = targetmodel(sp) |> Flux.cpu 
+        q_sp = targetmodel(sp) 
+        max_a_q_sp = q_sp[argmax_a_q_sp] |> Flux.cpu 
+        target_q_s = @pipe [r + gamma * q * (!failure) for (r, q, failure) in zip(batch.r, max_a_q_sp, batch.failure)]  
 
-        max_a_q_sp = q_sp[argmax_a_q_sp] 
-
-        target_q_s = [r + gamma * q * (!failure) for (r, q, failure) in zip(batch.r, max_a_q_sp, batch.failure)]
-
-        @pipe mapreduce(permutedims, vcat, batch.s) |> # [e.s for e in experiences]) |>
+        @pipe mapreduce(permutedims, vcat, batch.s) |> 
             permutedims |>
             (usegpu ? Flux.gpu(_) : _) |> 
             (_, target_q_s) |> 
