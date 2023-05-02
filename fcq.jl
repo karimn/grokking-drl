@@ -2,9 +2,10 @@
 struct FCQ <: AbstractModel
     model
     opt
+    lossfn
 end
 
-function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, usegpu = true)
+function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), usegpu = true)
     hiddenlayers = Vector{Any}(nothing, length(hiddendims) - 1)
 
     for i in 1:(length(hiddendims) - 1)
@@ -22,20 +23,23 @@ function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOpti
 
     opt = Flux.setup(valueopt, modelchain)
 
-    return FCQ(modelchain, opt)
+    return FCQ(modelchain, opt, lossfn)
 end
 
 (m::FCQ)(state) = m.model(state) 
 
-function train!(loss, m::M, data, actions) where M <: AbstractModel 
+function train!(m::M, data, actions, weights) where M <: AbstractModel 
     #Flux.train!(loss, m.model, data, m.opt) 
     
     input, label = data 
+    local tderrors
 
-    val, grads = Flux.withgradient(m.model) do m
-        fullresult = m(input) |> Flux.cpu
+    val, grads = Flux.withgradient(m.model) do modelchain
+        fullresult = modelchain(input) |> Flux.cpu
         result = [r[a] for (r, a) in zip(eachcol(fullresult), actions)]
-        loss(result, label)
+        tderrors = Vector{Float32}(result - label)
+
+        (m.lossfn)(result, label, weights)
     end
 
     if !isfinite(val)
@@ -43,14 +47,15 @@ function train!(loss, m::M, data, actions) where M <: AbstractModel
     end
 
     Flux.update!(m.opt, m.model, grads[1])
+
+    return tderrors
 end
 
 function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmodel::M = onlinemodel, argmaxmodel::M = targetmodel, usegpu = true) where {B <: AbstractBuffer, M <: AbstractModel}
-    batch = getbatch(experiences)
-
-    actions = batch.a # [e.a for e in experiences]
-
     for _ in epochs
+        idxs, weights, batch = getbatch(experiences)
+        actions = batch.a 
+
         sp = @pipe mapreduce(permutedims, vcat, batch.sp) |>
             permutedims |>
             (usegpu ? Flux.gpu(_) : _) 
@@ -67,7 +72,8 @@ function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmod
             permutedims |>
             (usegpu ? Flux.gpu(_) : _) |> 
             (_, target_q_s) |> 
-            train!(Flux.mse, onlinemodel, _, actions)  
+            train!(onlinemodel, _, actions, weights) |> 
+            update!(experiences, idxs, _)
     end
 end
 

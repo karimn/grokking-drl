@@ -4,13 +4,13 @@ struct EpisodeResult
     mean100evalscore
 end
 
-function train!(learner::L, trainstrategy::AbstractStrategy, evalstrategy::AbstractStrategy, gamma::Float64, maxminutes::Int, maxepisodes::Int, ::Type{B}; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractLearner, B <: AbstractBuffer}
+function train!(learner::L, trainstrategy::AbstractStrategy, evalstrategy::AbstractStrategy, gamma::Float64, maxminutes::Int, maxepisodes::Int, experiences::B; 
+                rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractLearner, B <: AbstractBuffer}
     evalscores = []
     episodereward = Float64[]
     episodetimestep = Int[]
     episodeexploration = Int[]
     results = EpisodeResult[]
-    experiences = B() 
 
     for ep in 1:maxepisodes
 

@@ -1,11 +1,12 @@
 struct FCDuelingQ <: AbstractModel
     model
     opt
+    lossfn
 end
 
 (m::FCDuelingQ)(state) = m.model(state) 
 
-function FCDuelingQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, usegpu = true)
+function FCDuelingQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), usegpu = true)
     hiddenlayers = Vector{Any}(nothing, length(hiddendims) - 1)
 
     for i in 1:(length(hiddendims) - 1)
@@ -26,5 +27,5 @@ function FCDuelingQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.Abstr
 
     opt = Flux.setup(valueopt, modelchain)
 
-    return FCDuelingQ(modelchain, opt)
+    return FCDuelingQ(modelchain, opt, lossfn)
 end
