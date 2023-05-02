@@ -25,8 +25,9 @@ numlearners = 5
 prog = Progress(numlearners)
 
 @threads for _ in 1:numlearners
-    learner = DQNLearner(env, [512, 128], Flux.RMSProp(0.0005), 40, 10; isdouble = true, usegpu)
-    results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, ReplayBuffer{50_000, 64}; usegpu)
+    learner = DQNLearner{FCQ}(env, [512, 128], Flux.RMSProp(0.0005), 1, 10; isdouble = true, usegpu)
+    buffer = ReplayBuffer{50_000, 64}()
+    results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, buffer; usegpu)
     push!(dqnresults, results)
 
     if evalscore >= bestscore

@@ -17,6 +17,6 @@ include("drl-algo.jl")
 
 env = CartPoleEnv()
 
-learner = FQNLearner(env, [512, 128], Flux.RMSProp(0.0005), 40, usegpu = true)
+learner = FQNLearner{FCQ}(env, [512, 128], Flux.RMSProp(0.0005), 40, usegpu = true)
 
 train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), 1.0, 20, 10_000, Buffer{1024}, usegpu = true)
