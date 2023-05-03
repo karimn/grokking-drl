@@ -2,7 +2,12 @@ struct εGreedyStrategy <: AbstractStrategy
     ε::Float16
 end
 
-function selectaction(strategy::S, m::AbstractModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+function selectaction!(strategy::S, m::AbstractValueBasedModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStage
+    selectionaction(strategy, m, state; rng, usegpu)
+    decay!(strategy)
+end
+
+function selectaction(strategy::S, m::AbstractValueBasedModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
     qvalues = @pipe Vector{Float32}(state) |> m(usegpu ? Flux.gpu(_) : _)
     qvalues = usegpu ? Flux.cpu(qvalues) : qvalues
     explored = false
@@ -17,7 +22,7 @@ function selectaction(strategy::S, m::AbstractModel, state; rng::AbstractRNG = G
     return action, explored
 end
 
-function evaluate(strategy::S, m::AbstractModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+function evaluate(strategy::S, m::AbstractValueBasedModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
     rs = []
 
     for _ in 1:nepisodes

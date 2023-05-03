@@ -6,13 +6,13 @@ using ProgressMeter
 using StatsBase: sample
 using DataFrames
 
+include("util.jl")
 include("abstract.jl")
 include("cartpole.jl")
 include("strategy.jl")
 include("buffers.jl")
-include("drl-algo.jl")
 include("fcq.jl")
-include("learners.jl")
+include("valuelearners.jl")
 
 env = CartPoleEnv()
 bestscore = 0

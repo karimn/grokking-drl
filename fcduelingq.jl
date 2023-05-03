@@ -1,4 +1,4 @@
-struct FCDuelingQ <: AbstractModel
+struct FCDuelingQ <: AbstractValueBasedModel
     model
     opt
     lossfn

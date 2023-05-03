@@ -1,11 +1,11 @@
 # Fully connected Q-function
-struct FCQ <: AbstractModel
+struct FCQ <: AbstractValueBasedModel
     model
     opt
     lossfn
 end
 
-function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), usegpu = true)
+function CreateSimpleFCModel(::Type{M}, inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int}, actfn, lossfn, usegpu) where M <: AbstractModel
     hiddenlayers = Vector{Any}(nothing, length(hiddendims) - 1)
 
     for i in 1:(length(hiddendims) - 1)
@@ -23,12 +23,16 @@ function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOpti
 
     opt = Flux.setup(valueopt, modelchain)
 
-    return FCQ(modelchain, opt, lossfn)
+    return M(modelchain, opt, lossfn)
+end
+
+function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), usegpu = true)
+    return CreateSimpleFCModel(FCQ, inputdim, outputdim, valueopt; hiddendims, actfn, lossfn, usegpu)
 end
 
 (m::FCQ)(state) = m.model(state) 
 
-function train!(m::M, data, actions, weights) where M <: AbstractModel 
+function train!(m::M, data, actions, weights) where M <: AbstractValueBasedModel 
     #Flux.train!(loss, m.model, data, m.opt) 
     
     input, label = data 
@@ -51,7 +55,7 @@ function train!(m::M, data, actions, weights) where M <: AbstractModel
     return tderrors
 end
 
-function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmodel::M = onlinemodel, argmaxmodel::M = targetmodel, usegpu = true) where {B <: AbstractBuffer, M <: AbstractModel}
+function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmodel::M = onlinemodel, argmaxmodel::M = targetmodel, usegpu = true) where {B <: AbstractBuffer, M <: AbstractValueBasedModel}
     for _ in epochs
         idxs, weights, batch = getbatch(experiences)
         actions = batch.a 
@@ -77,7 +81,7 @@ function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmod
     end
 end
 
-function save(m::M, filename) where M <: AbstractModel
+function save(m::M, filename) where M <: AbstractValueBasedModel
     model = m.model |> Flux.cpu
     BSON.@save filename model
 end
