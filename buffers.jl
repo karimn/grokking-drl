@@ -63,7 +63,7 @@ mutable struct PrioritizedReplayBuffer{MS, BS} <: AbstractBuffer
     rankbased::Bool
 end
 
-PrioritizedReplayBuffer{MS, BS}(alpha::Float32, beta::Float32, betarate::Float32; rankbased = false) where {MS, BS} = PrioritizedReplayBuffer{MS, BS}(1, 0, DataFrame(), alpha, beta, betarate, rankbased) 
+PrioritizedReplayBuffer{MS, BS}(;alpha::Float32, beta::Float32, betarate::Float32, rankbased = false) where {MS, BS} = PrioritizedReplayBuffer{MS, BS}(1, 0, DataFrame(), alpha, beta, betarate, rankbased) 
 
 function store!(b::PrioritizedReplayBuffer{MS, BS}, s) where {MS, BS}
     s = (s..., priority = b.currsize > 0 ? maximum(b.buffer.priority) : 1.0)

@@ -31,5 +31,30 @@ function (env::CartPoleEnv)(action)
 end
 =#
 
+mutable struct CartPoleEnv <: RLEnvs.AbstractEnv
+    innerenv::RLEnvs.CartPoleEnv
+    max_steps::Int
+    currstep::Int
+end
+
+CartPoleEnv(;max_steps = 500, kwargs...) = CartPoleEnv(RLEnvs.CartPoleEnv(;max_steps, kwargs...), max_steps, 0)
+
+RLEnvs.state(e::CartPoleEnv) = RLEnvs.state(e.innerenv)
+RLEnvs.is_terminated(e::CartPoleEnv) = RLEnvs.is_terminated(e.innerenv)
+RLEnvs.reward(e::CartPoleEnv) = RLEnvs.reward(e.innerenv)
+RLEnvs.state_space(e::CartPoleEnv) = RLEnvs.state_space(e.innerenv)
+RLEnvs.action_space(e::CartPoleEnv) = RLEnvs.action_space(e.innerenv)
+
+function RLEnvs.reset!(e::CartPoleEnv) 
+    e.currstep = 0
+    RLEnvs.reset!(e.innerenv)
+end
+
+function (e::CartPoleEnv)(action) 
+    e.currstep += 1
+    e.innerenv(action)
+end
+
+istruncated(e::CartPoleEnv) = e.currstep > e.max_steps
 nactions(::CartPoleEnv) = 2
 spacedim(::CartPoleEnv) = 4 
