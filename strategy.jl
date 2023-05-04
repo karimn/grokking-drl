@@ -2,9 +2,11 @@ struct εGreedyStrategy <: AbstractStrategy
     ε::Float16
 end
 
-function selectaction!(strategy::S, m::AbstractValueBasedModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStage
-    selectionaction(strategy, m, state; rng, usegpu)
+function selectaction!(strategy::S, m::AbstractValueBasedModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+    retvals = selectaction(strategy, m, state; rng, usegpu)
     decay!(strategy)
+
+    return retvals
 end
 
 function selectaction(strategy::S, m::AbstractValueBasedModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
@@ -24,13 +26,16 @@ end
 
 function evaluate(strategy::S, m::AbstractValueBasedModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
     rs = []
+    steps = []
 
     for _ in 1:nepisodes
         reset!(env)
         s, d = Vector{Float32}(state(env)), false
         push!(rs, 0)
+        push!(steps, 0)
 
         while !d 
+            steps[end] += 1
             a, _ = selectaction(strategy, m, s, rng = rng, usegpu = usegpu)
             env(a)
             s, r, d = state(env), reward(env), is_terminated(env)
@@ -38,7 +43,7 @@ function evaluate(strategy::S, m::AbstractValueBasedModel, env::AbstractEnv; nep
         end
     end
 
-    return Statistics.mean(rs), Statistics.std(rs)
+    return Statistics.mean(rs), Statistics.std(rs), Statistics.mean(steps)
 end
 
 decay!(s::εGreedyStrategy) = s.ε
