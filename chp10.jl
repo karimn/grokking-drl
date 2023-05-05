@@ -1,45 +1,61 @@
 import Flux, CUDA
 import Statistics
+import ReinforcementLearningBase, ReinforcementLearningCore, ReinforcementLearningEnvironments
+import Logging
+using Dates: now
 using Random, Base.Threads, Pipe, BSON
-using ReinforcementLearningBase, ReinforcementLearningCore, ReinforcementLearningEnvironments
+using ReinforcementLearningBase: RLBase, AbstractEnv
+using ReinforcementLearningEnvironments: RLEnvs, reset!, state, reward, is_terminated
 using ProgressMeter
 using StatsBase: sample, wsample
 using DataFrames
 
+include("util.jl")
 include("abstract.jl")
 include("cartpole.jl")
 include("strategy.jl")
 include("buffers.jl")
-include("drl-algo.jl")
 include("fcq.jl")
 include("fcduelingq.jl")
-include("learners.jl")
-
-env = CartPoleEnv()
-bestscore = 0
-bestagent = nothing
-dqnresults = []
+include("valuelearners.jl")
 
 usegpu = true 
 numlearners = 5
+maxminutes = 20
+maxepisodes = 10_000
+max_cartpole_steps = 500
+
+# logger = Logging.SimpleLogger(stdout, Logging.Debug)
+# oldlogger = Logging.global_logger(logger)
+
+env = CartPoleEnv(max_steps = max_cartpole_steps, T = Float32)
+bestscore = 0
+bestagent = nothing
+dqnresults = []
 
 wmse(ŷ, y, w; agg = Statistics.mean) = agg((w.*(ŷ - y)).^2) 
 
 prog = Progress(numlearners)
 
-@threads for _ in 1:numlearners
-    learner = DQNLearner{FCDuelingQ}(env, [512, 128], Flux.RMSProp(0.0007), 1, 10; isdouble = true, tau = 0.9, lossfn = wmse, usegpu)
-    buffer = PrioritizedReplayBuffer{50_000, 64}(Float32(0.6), Float32(0.1), Float32(0.99992))
-    results, (evalscore, _) = train!(learner, εGreedyExpStrategy(1.0, 0.3, 20_0000), GreedyStrategy(), 1.0, 20, 10_000, buffer; usegpu)
+lk = ReentrantLock()
 
-    push!(dqnresults, results)
+for _ in 1:numlearners
+    learner = DQNLearner{FCDuelingQ}(env, [512, 128], Flux.RMSProp(0.0001); epochs = 1, updatemodelsteps = 1, τ = 0.1, isdouble = true, lossfn = wmse, usegpu)
+    buffer = PrioritizedReplayBuffer{20_000, 64}(alpha = Float32(0.6), beta = Float32(0.1), betarate = Float32(0.99992))
+    results, (evalscore, _) = train!(learner, εGreedyExpStrategy(ε = 1.0, min_ε = 0.3, decaysteps = 20_000), GreedyStrategy(), buffer; maxminutes, maxepisodes, usegpu)
 
-    if evalscore >= bestscore
-        global bestscore = evalscore
-        global bestagent = learner 
+    lock(lk) do
+        @info "Learning completed." evalscore
+
+        push!(dqnresults, results) 
+
+        if evalscore >= bestscore
+            global bestscore = evalscore
+            global bestagent = learner 
+        end
     end
 
     next!(prog)
 end
 
-finish!(prog)
+finish!(prog) 

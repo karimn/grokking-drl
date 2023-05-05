@@ -2,7 +2,14 @@ struct εGreedyStrategy <: AbstractStrategy
     ε::Float16
 end
 
-function selectaction(strategy::S, m::AbstractModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+function selectaction!(strategy::S, m::AbstractValueModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+    retvals = selectaction(strategy, m, state; rng, usegpu)
+    decay!(strategy)
+
+    return retvals
+end
+
+function selectaction(strategy::S, m::AbstractValueModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
     qvalues = @pipe Vector{Float32}(state) |> m(usegpu ? Flux.gpu(_) : _)
     qvalues = usegpu ? Flux.cpu(qvalues) : qvalues
     explored = false
@@ -17,15 +24,18 @@ function selectaction(strategy::S, m::AbstractModel, state; rng::AbstractRNG = G
     return action, explored
 end
 
-function evaluate(strategy::S, m::AbstractModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+function evaluate(strategy::S, m::AbstractValueModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
     rs = []
+    steps = []
 
     for _ in 1:nepisodes
         reset!(env)
         s, d = Vector{Float32}(state(env)), false
         push!(rs, 0)
+        push!(steps, 0)
 
         while !d 
+            steps[end] += 1
             a, _ = selectaction(strategy, m, s, rng = rng, usegpu = usegpu)
             env(a)
             s, r, d = state(env), reward(env), is_terminated(env)
@@ -33,7 +43,7 @@ function evaluate(strategy::S, m::AbstractModel, env::AbstractEnv; nepisodes = 1
         end
     end
 
-    return Statistics.mean(rs), Statistics.std(rs)
+    return Statistics.mean(rs), Statistics.std(rs), Statistics.mean(steps)
 end
 
 decay!(s::εGreedyStrategy) = s.ε
@@ -67,7 +77,7 @@ mutable struct εGreedyExpStrategy <: AbstractStrategy
     decayed_ε::Vector{Float16}
 end
 
-function εGreedyExpStrategy(ε::Float64, min_ε::Float64, decaysteps::Int)  
+function εGreedyExpStrategy(;ε::Float64, min_ε::Float64, decaysteps::Int)  
     decayed_ε = (0.01 ./ exp.(range(-2, 0, decaysteps)) .- 0.01) * (ε - min_ε) .+ min_ε
     εGreedyExpStrategy(ε, min_ε, decaysteps, ε, 0, decayed_ε)
 end
