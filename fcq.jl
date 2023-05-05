@@ -86,4 +86,4 @@ function save(m::M, filename) where M <: AbstractValueModel
     BSON.@save filename model
 end
 
-update!(to::M, from::M; tau = 1.0) where {M <: AbstractValueModel} = update!(to.model, from.model)
+update!(to::M, from::M; τ = 1.0) where {M <: AbstractValueModel} = update!(to.model, from.model; τ)
