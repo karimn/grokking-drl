@@ -116,10 +116,10 @@ function DQNLearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.Abstr
 end
 
 function updatemodels!(l::DQNLearner) 
-    if l.τ == 1.0
-        l.targetmodel = deepcopy(l.onlinemodel)
-    else
+    if l.τ < 1.0
         update!(l.targetmodel, l.onlinemodel, τ = l.τ)
+    else
+        l.targetmodel = deepcopy(l.onlinemodel)
     end
 end
 

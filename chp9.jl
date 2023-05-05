@@ -27,21 +27,19 @@ max_cartpole_steps = 500
 maxepisodes = 50_000
 maxminutes = 20
 
-env = CartPoleEnv(max_steps = max_cartpole_steps)
+env = CartPoleEnv(T = Float32, max_steps = max_cartpole_steps)
 bestscore = 0
 bestagent = nothing
 dqnresults = []
 
 prog = Progress(numlearners)
 
-wmse(ŷ, y, w; agg = Statistics.mean) = agg((w.*(ŷ - y)).^2) 
-
 lk = ReentrantLock()
 
-@threads for _ in 1:numlearners
+for _ in 1:numlearners
     learner = DQNLearner{FCQ}(env, [512, 128], Flux.RMSProp(0.0005); epochs = 1, updatemodelsteps = 10, isdouble = true, usegpu)
     buffer = ReplayBuffer{50_000, 64}()
-    results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), buffer; γ = 1.0, maxminutes, maxepisodes, usegpu)
+    results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), buffer; maxminutes, maxepisodes, usegpu)
 
     lock(lk) do
         push!(dqnresults, results)
