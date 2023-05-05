@@ -18,8 +18,8 @@ include("buffers.jl")
 include("fcq.jl")
 include("valuelearners.jl")
 
-logger = Logging.SimpleLogger(stdout, Logging.Debug)
-oldlogger = Logging.global_logger(logger)
+#logger = Logging.SimpleLogger(stdout, Logging.Debug)
+#oldlogger = Logging.global_logger(logger)
 
 usegpu = true 
 numlearners = 5
