@@ -8,7 +8,7 @@ function step!(learner::AbstractValueLearner, s::AbstractStrategy, currstate; rn
 end
 
 function train!(learner::L, trainstrategy::AbstractStrategy, evalstrategy::AbstractStrategy, experiences::B; 
-                gamma::Float64, maxminutes::Int, maxepisodes::Int, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractValueLearner, B <: AbstractBuffer}
+                maxminutes::Int, maxepisodes::Int, gamma::Float64 = 1.0, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractValueLearner, B <: AbstractBuffer}
     evalscores = []
     episodereward = Float64[]
     episodetimestep = Int[]
@@ -57,7 +57,7 @@ function train!(learner::L, trainstrategy::AbstractStrategy, evalstrategy::Abstr
 
         push!(results, EpisodeResult(sum(episodetimestep), Statistics.mean(last(episodereward, 100)), Statistics.mean(last(evalscores, 100))))
 
-        #@info "Episode completed" episode = ep steps=step evalscore evalscoresd evalsteps
+        @debug "Episode completed" episode = ep steps=step evalscore evalscoresd evalsteps
 
         wallclockelapsed = now() - trainstart
         maxtimereached = (wallclockelapsed.value / 60_000) >= maxminutes 
@@ -71,13 +71,13 @@ function train!(learner::L, trainstrategy::AbstractStrategy, evalstrategy::Abstr
     return results, evaluate(evalstrategy, learner, env; nepisodes = 100, usegpu)
 end
 
-struct FQNLearner{E, M} <: AbstractValueLearner where {E <: AbstractEnv, M <: AbstractValueBasedModel}
+struct FQNLearner{E, M} <: AbstractValueLearner where {E <: AbstractEnv, M <: AbstractValueModel}
     onlinemodel::M
     epochs::Int
     env::E
 end
 
-function FQNLearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser, epochs::Int; lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), usegpu = true) where {E <: AbstractEnv, M <: AbstractValueBasedModel}
+function FQNLearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser; epochs::Int, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), usegpu = true) where {E <: AbstractEnv, M <: AbstractValueModel}
     nS, nA = spacedim(env), nactions(env)
     model = M(nS, nA, opt; hiddendims, lossfn, usegpu)
 
@@ -95,7 +95,7 @@ evaluate(evalstrategy::AbstractStrategy, learner::L, env::E; nepisodes = 1, useg
 
 save(learner::L, filename) where L <: AbstractValueLearner = save(learner.onlinemodel, filename)
 
-mutable struct DQNLearner{E, M} <: AbstractValueLearner where {E <: AbstractEnv, M <: AbstractValueBasedModel}
+mutable struct DQNLearner{E, M} <: AbstractValueLearner where {E <: AbstractEnv, M <: AbstractValueModel}
     onlinemodel::M
     targetmodel::M
     epochs::Int
@@ -106,7 +106,7 @@ mutable struct DQNLearner{E, M} <: AbstractValueLearner where {E <: AbstractEnv,
 end
 
 function DQNLearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser; 
-                       epochs::Int, updatemodelsteps::Int, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), isdouble = false, tau = 0.0, usegpu = true) where {E <: AbstractEnv, M <: AbstractValueBasedModel}
+                       epochs::Int, updatemodelsteps::Int, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), isdouble = false, tau = 1.0, usegpu = true) where {E <: AbstractEnv, M <: AbstractValueModel}
 
     nS, nA = spacedim(env), nactions(env)
     onlinemodel = M(nS, nA, opt; hiddendims, lossfn, usegpu)
@@ -115,15 +115,18 @@ function DQNLearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.Abstr
     return DQNLearner{E, M}(onlinemodel, targetmodel, epochs, env, updatemodelsteps, isdouble, tau)
 end
 
+function updatemodels!(l::DQNLearner) 
+    if l.tau == 1.0
+        l.targetmodel = deepcopy(l.onlinemodel)
+    else
+        update!(l.targetmodel, l.onlinemodel, tau = l.tau)
+    end
+end
+
 function optimizemodel!(learner::DQNLearner, experiences::B, gamma, step; usegpu = true) where B <: AbstractBuffer 
     optimizemodel!(learner.onlinemodel, experiences, learner.epochs, gamma, argmaxmodel = learner.isdoublelearner ? learner.onlinemodel : learner.targetmodel, targetmodel = learner.targetmodel, usegpu = usegpu)
 
-    if learner.tau > 0
-        newparams = [(1 - learner.tau) * targetp + learner.tau * onlinep for (targetp, onlinep) in zip(Flux.params(learner.targetmodel), Flux.params(learner.onlinemodel))]
-        Flux.loadparams!(learner.targetmodel, newparams)
-    elseif (step % learner.updatemodelsteps) == 0 
-        learner.targetmodel = deepcopy(learner.onlinemodel) 
-    end
+    (step % learner.updatemodelsteps) == 0 && updatemodels!(learner)
 end
 
 (learner::DQNLearner)(state) = learner.onlinemodel(state)

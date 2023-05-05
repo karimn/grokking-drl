@@ -89,8 +89,6 @@ end
 readybatch(b::PrioritizedReplayBuffer{MS, BS}) where {MS, BS} = b.currsize >= 5 * BS 
 
 function getbatch(b::PrioritizedReplayBuffer{MS, BS}; batchsize = BS) where {MS, BS} 
-    b.buffer[sample(1:nrow(b.buffer), batchsize, replace = false), :]
-
     b.beta = min(1.0, b.beta / b.betarate)
 
     priorities = b.rankbased ? 1 ./ (collect(range(1, b.currsize)) .+ 1) : b.buffer.priority .+ 1e-6

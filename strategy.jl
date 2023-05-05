@@ -2,14 +2,14 @@ struct εGreedyStrategy <: AbstractStrategy
     ε::Float16
 end
 
-function selectaction!(strategy::S, m::AbstractValueBasedModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+function selectaction!(strategy::S, m::AbstractValueModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
     retvals = selectaction(strategy, m, state; rng, usegpu)
     decay!(strategy)
 
     return retvals
 end
 
-function selectaction(strategy::S, m::AbstractValueBasedModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+function selectaction(strategy::S, m::AbstractValueModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
     qvalues = @pipe Vector{Float32}(state) |> m(usegpu ? Flux.gpu(_) : _)
     qvalues = usegpu ? Flux.cpu(qvalues) : qvalues
     explored = false
@@ -24,7 +24,7 @@ function selectaction(strategy::S, m::AbstractValueBasedModel, state; rng::Abstr
     return action, explored
 end
 
-function evaluate(strategy::S, m::AbstractValueBasedModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+function evaluate(strategy::S, m::AbstractValueModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
     rs = []
     steps = []
 
@@ -77,7 +77,7 @@ mutable struct εGreedyExpStrategy <: AbstractStrategy
     decayed_ε::Vector{Float16}
 end
 
-function εGreedyExpStrategy(ε::Float64, min_ε::Float64, decaysteps::Int)  
+function εGreedyExpStrategy(;ε::Float64, min_ε::Float64, decaysteps::Int)  
     decayed_ε = (0.01 ./ exp.(range(-2, 0, decaysteps)) .- 0.01) * (ε - min_ε) .+ min_ε
     εGreedyExpStrategy(ε, min_ε, decaysteps, ε, 0, decayed_ε)
 end

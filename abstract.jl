@@ -1,6 +1,6 @@
 abstract type AbstractModel end
-abstract type AbstractValueBasedModel <: AbstractModel end
-abstract type AbstractPolicyBasedModel <: AbstractModel end
+abstract type AbstractValueModel <: AbstractModel end
+abstract type AbstractPolicyModel <: AbstractModel end
 abstract type AbstractStrategy end
 abstract type AbstractDRLAlgorithm end
 abstract type AbstractBuffer end

@@ -1,4 +1,4 @@
-struct FCDAP <: AbstractPolicyBasedModel
+struct FCDAP <: AbstractPolicyModel
     model
     opt
     lossfn
@@ -32,7 +32,7 @@ end
 
 selectgreedyaction(m::FCDAP, state) = argmax(m(state))
 
-function train!(m::M, states, actions, rewards, gamma) where M <: AbstractPolicyBasedModel 
+function train!(m::M, states, actions, rewards, gamma) where M <: AbstractPolicyModel 
     T = length(states)
     discounts = gamma.^range(0, T - 1)
     returns = [sum(discounts[begin:(T - t + 1)] .* rewards[t:end]) for t in 1:T] 
@@ -54,7 +54,7 @@ function train!(m::M, states, actions, rewards, gamma) where M <: AbstractPolicy
     Flux.update!(m.opt, m.model, grads[1])
 end
 
-function evaluate(m::M, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where M <: AbstractPolicyBasedModel
+function evaluate(m::M, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where M <: AbstractPolicyModel
     rs = []
 
     for _ in 1:nepisodes

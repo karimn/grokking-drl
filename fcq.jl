@@ -1,5 +1,5 @@
 # Fully connected Q-function
-struct FCQ <: AbstractValueBasedModel
+struct FCQ <: AbstractValueModel
     model
     opt
     lossfn
@@ -32,7 +32,7 @@ end
 
 (m::FCQ)(state) = m.model(state) 
 
-function train!(m::M, data, actions, weights) where M <: AbstractValueBasedModel 
+function train!(m::M, data, actions, weights) where M <: AbstractValueModel 
     #Flux.train!(loss, m.model, data, m.opt) 
     
     input, label = data 
@@ -55,7 +55,7 @@ function train!(m::M, data, actions, weights) where M <: AbstractValueBasedModel
     return tderrors
 end
 
-function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmodel::M = onlinemodel, argmaxmodel::M = targetmodel, usegpu = true) where {B <: AbstractBuffer, M <: AbstractValueBasedModel}
+function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmodel::M = onlinemodel, argmaxmodel::M = targetmodel, usegpu = true) where {B <: AbstractBuffer, M <: AbstractValueModel}
     for _ in epochs
         idxs, weights, batch = getbatch(experiences)
         actions = batch.a 
@@ -81,7 +81,9 @@ function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmod
     end
 end
 
-function save(m::M, filename) where M <: AbstractValueBasedModel
+function save(m::M, filename) where M <: AbstractValueModel
     model = m.model |> Flux.cpu
     BSON.@save filename model
 end
+
+update!(to::M, from::M; tau = 1.0) where {M <: AbstractValueModel} = update!(to.model, from.model)

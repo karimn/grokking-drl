@@ -1,10 +1,10 @@
-struct REINFORCELearner{E, M} <: AbstractPolicyLearner where {E <: AbstractEnv, M <: AbstractPolicyBasedModel}
+struct REINFORCELearner{E, M} <: AbstractPolicyLearner where {E <: AbstractEnv, M <: AbstractPolicyModel}
     policymodel::M
     epochs::Int
     env::E
 end
 
-function REINFORCELearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser; epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, M <: AbstractPolicyBasedModel}
+function REINFORCELearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser; epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, M <: AbstractPolicyModel}
     nS, nA = spacedim(env), nactions(env)
     policymodel = M(nS, nA, opt; hiddendims, usegpu)
 
