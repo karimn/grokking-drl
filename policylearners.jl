@@ -11,8 +11,8 @@ function REINFORCELearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise
     return REINFORCELearner{E, M}(policymodel, epochs, env)
 end
 
-function optimizemodel!(learner::L, states, actions, rewards, gamma; usegpu = true) where L <: AbstractPolicyLearner
-    train!(learner.policymodel, usegpu ? Flux.gpu(states) : states, actions, rewards, gamma)
+function optimizemodel!(learner::L, states, actions, rewards, γ; usegpu = true) where L <: AbstractPolicyLearner
+    train!(learner.policymodel, usegpu ? Flux.gpu(states) : states, actions, rewards, γ)
 end
 
 function step!(learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractPolicyLearner
@@ -23,7 +23,7 @@ function step!(learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) wh
     return action, newstate, reward(learner.env), is_terminated(learner.env)
 end
 
-function train!(learner::L, gamma::Float64, maxminutes::Int, maxepisodes::Int; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractPolicyLearner}
+function train!(learner::L, γ::Float64, maxminutes::Int, maxepisodes::Int; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractPolicyLearner}
     evalscores = []
     episodereward = Float64[]
     episodetimestep = Int[]
@@ -63,7 +63,7 @@ function train!(learner::L, gamma::Float64, maxminutes::Int, maxepisodes::Int; r
             isterminal && break
         end
 
-        optimizemodel!(learner, states, actions, rewards, gamma; usegpu)
+        optimizemodel!(learner, states, actions, rewards, γ; usegpu)
 
         evalscore, _ = evaluate(learner.policymodel, env; usegpu)
         push!(evalscores, evalscore)     

@@ -32,9 +32,9 @@ end
 
 selectgreedyaction(m::FCDAP, state) = argmax(m(state))
 
-function train!(m::M, states, actions, rewards, gamma) where M <: AbstractPolicyModel 
+function train!(m::M, states, actions, rewards, γ) where M <: AbstractPolicyModel 
     T = length(states)
-    discounts = gamma.^range(0, T - 1)
+    discounts = γ.^range(0, T - 1)
     returns = [sum(discounts[begin:(T - t + 1)] .* rewards[t:end]) for t in 1:T] 
 
     val, grads = Flux.withgradient(m.model, states, actions, rewards) do modelchain, s, a, r

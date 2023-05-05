@@ -8,7 +8,7 @@ function step!(learner::AbstractValueLearner, s::AbstractStrategy, currstate; rn
 end
 
 function train!(learner::L, trainstrategy::AbstractStrategy, evalstrategy::AbstractStrategy, experiences::B; 
-                maxminutes::Int, maxepisodes::Int, gamma::Float64 = 1.0, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractValueLearner, B <: AbstractBuffer}
+                maxminutes::Int, maxepisodes::Int, γ::Float64 = 1.0, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractValueLearner, B <: AbstractBuffer}
     evalscores = []
     episodereward = Float64[]
     episodetimestep = Int[]
@@ -43,7 +43,7 @@ function train!(learner::L, trainstrategy::AbstractStrategy, evalstrategy::Abstr
             currstate = newstate
 
             if readybatch(experiences) 
-                optimizemodel!(learner, experiences, gamma, step, usegpu = usegpu)
+                optimizemodel!(learner, experiences, γ, step, usegpu = usegpu)
             end
 
             isterminal && break
@@ -84,7 +84,7 @@ function FQNLearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.Abstr
     return FQNLearner{E, M}(model, epochs, env)
 end
 
-optimizemodel!(learner::FQNLearner, experiences::B, gamma, step; usegpu = true) where B <: AbstractBuffer = optimizemodel!(learner.onlinemodel, experiences, learner.epochs, gamma, usegpu = usegpu)
+optimizemodel!(learner::FQNLearner, experiences::B, γ, step; usegpu = true) where B <: AbstractBuffer = optimizemodel!(learner.onlinemodel, experiences, learner.epochs, γ, usegpu = usegpu)
 
 selectaction(trainstrategy::AbstractStrategy, learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractValueLearner = selectaction(trainstrategy, learner.onlinemodel, currstate; rng, usegpu)
 selectaction!(trainstrategy::AbstractStrategy, learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractValueLearner = selectaction!(trainstrategy, learner.onlinemodel, currstate; rng, usegpu)
@@ -123,8 +123,8 @@ function updatemodels!(l::DQNLearner)
     end
 end
 
-function optimizemodel!(learner::DQNLearner, experiences::B, gamma, step; usegpu = true) where B <: AbstractBuffer 
-    optimizemodel!(learner.onlinemodel, experiences, learner.epochs, gamma, argmaxmodel = learner.isdoublelearner ? learner.onlinemodel : learner.targetmodel, targetmodel = learner.targetmodel, usegpu = usegpu)
+function optimizemodel!(learner::DQNLearner, experiences::B, γ, step; usegpu = true) where B <: AbstractBuffer 
+    optimizemodel!(learner.onlinemodel, experiences, learner.epochs, γ, argmaxmodel = learner.isdoublelearner ? learner.onlinemodel : learner.targetmodel, targetmodel = learner.targetmodel, usegpu = usegpu)
 
     (step % learner.updatemodelsteps) == 0 && updatemodels!(learner)
 end

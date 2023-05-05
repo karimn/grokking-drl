@@ -41,7 +41,7 @@ lk = ReentrantLock()
 @threads for _ in 1:numlearners
     learner = DQNLearner{FCQ}(env, [512, 128], Flux.RMSProp(0.0005); epochs = 1, updatemodelsteps = 10, isdouble = true, usegpu)
     buffer = ReplayBuffer{50_000, 64}()
-    results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), buffer; gamma = 1.0, maxminutes, maxepisodes, usegpu)
+    results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), buffer; γ = 1.0, maxminutes, maxepisodes, usegpu)
 
     lock(lk) do
         push!(dqnresults, results)

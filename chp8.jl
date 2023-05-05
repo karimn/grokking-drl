@@ -20,4 +20,4 @@ learner = FQNLearner{FCQ}(env, [512, 128], Flux.RMSProp(0.0005); epochs = 40, us
 
 buffer = Buffer{1024}()
 
-train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), buffer; gamma = 1.0, maxminutes = 20, maxepisodes = 10_000, usegpu = true)
+train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), buffer; γ = 1.0, maxminutes = 20, maxepisodes = 10_000, usegpu = true)

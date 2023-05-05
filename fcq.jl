@@ -55,7 +55,7 @@ function train!(m::M, data, actions, weights) where M <: AbstractValueModel
     return tderrors
 end
 
-function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmodel::M = onlinemodel, argmaxmodel::M = targetmodel, usegpu = true) where {B <: AbstractBuffer, M <: AbstractValueModel}
+function optimizemodel!(onlinemodel::M, experiences::B, epochs, γ; targetmodel::M = onlinemodel, argmaxmodel::M = targetmodel, usegpu = true) where {B <: AbstractBuffer, M <: AbstractValueModel}
     for _ in epochs
         idxs, weights, batch = getbatch(experiences)
         actions = batch.a 
@@ -70,7 +70,7 @@ function optimizemodel!(onlinemodel::M, experiences::B, epochs, gamma; targetmod
 
         q_sp = targetmodel(sp) 
         max_a_q_sp = q_sp[argmax_a_q_sp] |> Flux.cpu 
-        target_q_s = @pipe [r + gamma * q * (!failure) for (r, q, failure) in zip(batch.r, max_a_q_sp, batch.failure)]  
+        target_q_s = @pipe [r + γ * q * (!failure) for (r, q, failure) in zip(batch.r, max_a_q_sp, batch.failure)]  
 
         @pipe mapreduce(permutedims, vcat, batch.s) |> 
             permutedims |>
