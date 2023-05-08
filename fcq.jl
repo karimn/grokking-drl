@@ -15,7 +15,8 @@ function CreateSimpleFCModel(::Type{M}, inputdim::Int, outputdim::Int, valueopt:
     modelchain = Flux.Chain(
         Flux.Dense(inputdim => hiddendims[1], actfn), 
         hiddenlayers..., 
-        Flux.Dense(hiddendims[end] => outputdim))
+        Flux.Dense(hiddendims[end] => outputdim)
+    )
         
     if usegpu
         modelchain = modelchain |> Flux.gpu
