@@ -5,19 +5,39 @@ struct FCDAP <: AbstractPolicyModel
 end
 
 function FCDAP(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), usegpu = true)
-    return CreateSimpleFCModel(FCDAP, inputdim, outputdim, valueopt; hiddendims, actfn, lossfn, usegpu)
+    #return CreateSimpleFCModel(FCDAP, inputdim, outputdim, valueopt; hiddendims, actfn, lossfn, usegpu)
+
+    hiddenlayers = Vector{Any}(nothing, length(hiddendims) - 1)
+
+    for i in 1:(length(hiddendims) - 1)
+        hiddenlayers[i] = Flux.Dense(hiddendims[i] => hiddendims[i + 1], actfn)
+    end
+
+    modelchain = Flux.Chain(
+        Flux.Dense(inputdim => hiddendims[1], actfn), 
+        hiddenlayers..., 
+        Flux.Dense(hiddendims[end] => outputdim),
+        Flux.softmax
+    )
+        
+    if usegpu
+        modelchain = modelchain |> Flux.gpu
+    end
+
+    opt = Flux.setup(valueopt, modelchain)
+
+    return FCDAP(modelchain, opt, lossfn)
 end
 
 (m::FCDAP)(state) = m.model(state)
 
 function fullpass(m::FCDAP, state; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
-    logits = m(usegpu ? Flux.gpu(state) : state)
-
-    dist = Distributions.Categorical(softmax(logits))
+    p = m(usegpu ? Flux.gpu(state) : state)
+    dist = Distributions.Categorical(p)
     action = rand(rng, dist)
     logpa = @inbounds Distributions.logpdf(dist, action)  
-    ent = Distribtions.entropy(dist)
-    isexplore = action != argmax(logits)
+    ent = Distributions.entropy(dist)
+    isexplore = action != argmax(p)
 
     return action, isexplore, logpa, ent
 end
@@ -25,26 +45,26 @@ end
 function selectaction(m::FCDAP, state; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
     @pipe m(usegpu ? Flux.gpu(state) : state) |> 
         Flux.cpu |> 
-        Flux.softmax |> 
         Distributions.Categorical |> 
         rand(rng, _)
 end
 
 selectgreedyaction(m::FCDAP, state) = argmax(m(state))
 
-function train!(m::M, states, actions, rewards, γ) where M <: AbstractPolicyModel 
-    T = length(states)
+function train!(m::M, states, actions, rewards, logpas; γ = 1.0) where M <: AbstractPolicyModel 
+    T = size(states, 2)
     discounts = γ.^range(0, T - 1)
     returns = [sum(discounts[begin:(T - t + 1)] .* rewards[t:end]) for t in 1:T] 
 
     val, grads = Flux.withgradient(m.model, states, actions, returns, discounts) do modelchain, s, a, r, d
-        lpdf = @pipe modelchain.(s) |> 
+        lpdf = @pipe modelchain(s) |> 
+            log.(_) |> 
             Flux.cpu |> 
-            Flux.softmax.(_) |> 
-            Distributions.Categorical.(_) |> 
-            @inbounds Distributions.logpdf.(_, actions)
+            [collpdf[colact] for (collpdf, colact) in zip(eachcol(_), a)] 
+            #Distributions.Categorical.(_) |> 
+            #@inbounds Distributions.logpdf.(_, actions)
 
-        Statistics.mean(- discounts .* returns .* lpdf)
+        - Statistics.mean(d .* r .* lpdf)
     end
 
     if !isfinite(val)
