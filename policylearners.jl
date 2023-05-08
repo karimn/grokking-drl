@@ -47,7 +47,7 @@ function train!(learner::L, γ::Float64, maxminutes::Int, maxepisodes::Int; rng:
         while true
             step += 1
 
-            push!(states, currstate)
+            push!(states, copy(currstate))
 
             action, newstate, curr_reward, isterminal = step!(learner, currstate; rng, usegpu) 
 
