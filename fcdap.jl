@@ -32,7 +32,7 @@ end
 (m::FCDAP)(state) = m.model(state)
 
 function fullpass(m::FCDAP, state; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
-    p = m(usegpu ? Flux.gpu(state) : state)
+    p = m(usegpu ? Flux.gpu(state) : state) |> Flux.cpu
     dist = Distributions.Categorical(p)
     action = rand(rng, dist)
     logpa = @inbounds Distributions.logpdf(dist, action)  
