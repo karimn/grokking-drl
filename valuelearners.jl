@@ -77,11 +77,11 @@ struct FQNLearner{E, M} <: AbstractValueLearner where {E <: AbstractEnv, M <: Ab
     env::E
 end
 
-function FQNLearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser; epochs::Int, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), usegpu = true) where {E <: AbstractEnv, M <: AbstractValueModel}
+function FQNLearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser; epochs::Int, lossfn = (ŷ, y, args...) -> Flux.mse(ŷ, y), usegpu = true) where {E <: AbstractEnv, M <: AbstractValueModel}
     nS, nA = spacedim(env), nactions(env)
     model = M(nS, nA, opt; hiddendims, lossfn, usegpu)
 
-    return FQNLearner{E, M}(model, epochs, env)
+    return FQNLearner{E, M}(model, epochs, env)w
 end
 
 optimizemodel!(learner::FQNLearner, experiences::B, γ, step; usegpu = true) where B <: AbstractBuffer = optimizemodel!(learner.onlinemodel, experiences, learner.epochs, γ, usegpu = usegpu)
@@ -106,7 +106,7 @@ mutable struct DQNLearner{E, M} <: AbstractValueLearner where {E <: AbstractEnv,
 end
 
 function DQNLearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser; 
-                       epochs::Int, updatemodelsteps::Int, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), isdouble = false, τ = 1.0, usegpu = true) where {E <: AbstractEnv, M <: AbstractValueModel}
+                       epochs::Int, updatemodelsteps::Int, lossfn = (ŷ, y, args...) -> Flux.mse(ŷ, y), isdouble = false, τ = 1.0, usegpu = true) where {E <: AbstractEnv, M <: AbstractValueModel}
 
     nS, nA = spacedim(env), nactions(env)
     onlinemodel = M(nS, nA, opt; hiddendims, lossfn, usegpu)

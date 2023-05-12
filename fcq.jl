@@ -27,7 +27,7 @@ function CreateSimpleFCModel(::Type{M}, inputdim::Int, outputdim::Int, valueopt:
     return M(modelchain, opt, lossfn)
 end
 
-function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), usegpu = true)
+function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, args...) -> Flux.mse(ŷ, y), usegpu = true)
     return CreateSimpleFCModel(FCQ, inputdim, outputdim, valueopt; hiddendims, actfn, lossfn, usegpu)
 end
 
