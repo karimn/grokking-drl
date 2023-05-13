@@ -82,6 +82,8 @@ function optimizemodel!(onlinemodel::M, experiences::B, epochs, γ; targetmodel:
     end
 end
 
+opt(m::M) where M <: AbstractModel = m.opt
+
 function save(m::M, filename) where M <: AbstractValueModel
     model = m.model |> Flux.cpu
     BSON.@save filename model

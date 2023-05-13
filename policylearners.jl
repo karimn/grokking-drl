@@ -18,12 +18,12 @@ function optimizemodel!(learner::L, states, actions, rewards; usegpu = true) whe
         train!(learner.policymodel, _, actions, rewards; γ = learner.γ)
 end
 
-function step!(learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractPolicyLearner
-    action = selectaction(learner.policymodel, currstate; rng, usegpu)
-    learner.env(action)
-    newstate = Flux.cpu(state(learner.env))
+function step!(learner::L, currstate; policymodel = learner.policymodel, env = learner.env, rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractPolicyLearner
+    action = selectaction(policymodel, currstate; rng, usegpu)
+    env(action)
+    newstate = Flux.cpu(state(env))
 
-    return action, newstate, reward(learner.env), is_terminated(learner.env), istruncated(learner.env)
+    return action, newstate, reward(env), is_terminated(env), istruncated(env)
 end
 
 function train!(learner::L; maxminutes::Int, maxepisodes::Int, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractPolicyLearner}
@@ -110,14 +110,19 @@ function VPGLearner{PM, VM}(env::E, policyhiddendims::Vector{Int}, valuehiddendi
     return VPGLearner{E, PM, VM}(policymodel, valuemodel, epochs, env, γ, β)
 end
 
-function optimizemodel!(learner::VPGLearner, states, actions, rewards; usegpu = true)
+function optimizemodel!(policymodel::AbstractPolicyModel, valuemodel::AbstractValueModel, env::AbstractEnv, states, actions, rewards; γ, β, usegpu = true) 
     statesdata = @pipe hcat(states...) |> 
         (usegpu ? Flux.gpu(_) : _)
 
-    laststate, truncated = state(learner.env), istruncated(learner.env)
+    laststate = state(env)
+    failure = is_terminated(env) && !istruncated(env)
 
-    nextvalue = learner.valuemodel(usegpu ? Flux.gpu(laststate) : laststate) |> Flux.cpu |> first
-    push!(rewards, truncated ? nextvalue : 0.0)
+    nextvalue = valuemodel(usegpu ? Flux.gpu(laststate) : laststate) |> Flux.cpu |> first
+    push!(rewards, failure ? 0.0 : nextvalue)
         
-    train!(learner.policymodel, learner.valuemodel, statesdata, actions, rewards; γ = learner.γ, β = learner.β)
+    train!(policymodel, valuemodel, statesdata, actions, rewards; γ, β)
+end
+
+function optimizemodel!(learner::VPGLearner, states, actions, rewards; usegpu = true)
+    optimizemodel!(learner.policymodel, learner.valuemodel, learner.env, states, actions, rewards; γ = learner.γ, β = learner.β, usegpu)
 end

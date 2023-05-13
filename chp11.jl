@@ -15,6 +15,7 @@ include("fcq.jl")
 include("fcdap.jl")
 include("fcv.jl")
 include("policylearners.jl")
+include("a3c.jl")
 
 usegpu = true 
 numlearners = 5
@@ -58,8 +59,35 @@ dqnresults = []
 prog = Progress(numlearners)
 
 for _ in 1:numlearners
+    # This is equivalent to:
+    # learner = A3CLearner{FCDAP, FCV}(env, [128, 64], [256, 128], Flux.RMSProp(0.0005), Flux.RMSProp(0.0007); max_nsteps = 50_000, nworkers = 1, β = 0.001, usegpu)
     learner = VPGLearner{FCDAP, FCV}(env, [128, 64], [256, 128], Flux.RMSProp(0.0005), Flux.RMSProp(0.0007); β = 0.001, usegpu)
     results, (evalscore, _) = train!(learner; maxminutes, maxepisodes, usegpu)
+
+    push!(dqnresults, results)
+
+    @info "Learning completed." evalscore
+
+    if evalscore >= bestscore
+        global bestscore = evalscore
+        global bestagent = learner 
+    end
+
+    next!(prog)
+end
+
+finish!(prog)
+
+bestscore = 0
+bestagent = nothing
+dqnresults = []
+
+prog = Progress(numlearners)
+
+for _ in 1:numlearners
+    learner = A3CLearner{FCDAP, FCV}(env, [128, 64], [256, 128], Flux.RMSProp(0.0005), Flux.RMSProp(0.0007); max_nsteps = 50, nworkers = 8, β = 0.001, usegpu)
+    results, (evalscore, _) = train!(learner; maxminutes = 10, maxepisodes, usegpu)
+
 
     push!(dqnresults, results)
 

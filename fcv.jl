@@ -22,7 +22,7 @@ function train!(policymodel::PM, valuemodel::VM, states, actions, rewards; Î², Î
     vval, vgrads = Flux.withgradient(valuemodel.model, states, returns) do modelchain, s, r
         value = modelchain(s) |> Flux.cpu |> vec 
 
-        return valuemodel.lossfn(r, value)
+        return valuemodel.lossfn(value, r)
     end
 
     value_error = returns - value
@@ -41,11 +41,13 @@ function train!(policymodel::PM, valuemodel::VM, states, actions, rewards; Î², Î
         @warn "Value loss is $vval"
     end
 
-    Flux.update!(valuemodel.opt, valuemodel.model, vgrads[1])
+    Flux.update!(opt(valuemodel), valuemodel.model, vgrads[1])
 
     if !isfinite(pval)
         @warn "Policy loss is $pval"
     end
 
-    Flux.update!(policymodel.opt, policymodel.model, pgrads[1])
+    Flux.update!(opt(policymodel), policymodel.model, pgrads[1])
+
+    return pgrads, vgrads
 end
