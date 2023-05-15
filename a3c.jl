@@ -5,6 +5,7 @@ struct A3CLearner{E, PM, VM} <: AbstractPolicyLearner where {E <: AbstractEnv, P
     env::E
     γ::Float32
     β::Float32
+    λ::Union{Nothing, Float32}
     max_nsteps::Int
     nworkers::Int
 end
@@ -15,7 +16,16 @@ function A3CLearner{PM, VM}(env::E, policyhiddendims::Vector{Int}, valuehiddendi
     policymodel = PM(nS, nA, policyopt; hiddendims = policyhiddendims, usegpu)
     valuemodel = VM(nS, valueopt; hiddendims = valuehiddendims, usegpu)
 
-    return A3CLearner{E, PM, VM}(policymodel, valuemodel, epochs, env, γ, β, max_nsteps, nworkers) #, workerpolicymodels, workervaluemodels)
+    return A3CLearner{E, PM, VM}(policymodel, valuemodel, epochs, env, γ, β, nothing, max_nsteps, nworkers)
+end
+
+function GAELearner(::Type{PM}, ::Type{VM}, env::E, policyhiddendims::Vector{Int}, valuehiddendims::Vector{Int}, policyopt::Flux.Optimise.AbstractOptimiser, valueopt::Flux.Optimise.AbstractOptimiser; 
+                     max_nsteps, nworkers, β, λ, γ = Float32(1.0), epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, PM <: AbstractPolicyModel, VM <: AbstractValueModel}
+    nS, nA = spacedim(env), nactions(env)
+    policymodel = PM(nS, nA, policyopt; hiddendims = policyhiddendims, usegpu)
+    valuemodel = VM(nS, valueopt; hiddendims = valuehiddendims, usegpu)
+
+    return A3CLearner{E, PM, VM}(policymodel, valuemodel, epochs, env, γ, β, λ, max_nsteps, nworkers)
 end
 
 function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
@@ -59,38 +69,49 @@ function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, rng::Abs
 
             states, actions, rewards = [], [], []
 
-            while !isterminal 
-                step += 1
+            try
+                while !isterminal 
+                    step += 1
 
-                push!(states, copy(currstate))
+                    push!(states, copy(currstate))
 
-                action, newstate, curr_reward, isterminal, _ = step!(learner, currstate; policymodel = localpolicymodel, env = localenv, rng, usegpu) 
+                    action, newstate, curr_reward, isterminal, _ = step!(learner, currstate; policymodel = localpolicymodel, env = localenv, rng, usegpu) 
 
-                push!(actions, action)
-                push!(rewards, curr_reward)
+                    push!(actions, action)
+                    push!(rewards, curr_reward)
 
-                episodereward[workerid][end] += curr_reward 
-                episodetimestep[workerid][end] += 1
-                episodeexploration[workerid][end] += 1
+                    episodereward[workerid][end] += curr_reward 
+                    episodetimestep[workerid][end] += 1
+                    episodeexploration[workerid][end] += 1
 
-                currstate = newstate
+                    currstate = newstate
 
-                if isterminal || (step - nstepstart == learner.max_nsteps)
-                    # isterminal && @debug "Terminal state reached." workerid episode = nepisodes[] steps=step 
-                    # isterminal || @debug "Max steps reached." workerid episode = nepisodes[] steps=step 
+                    if isterminal || (step - nstepstart >= learner.max_nsteps)
+                        # isterminal && @debug "Terminal state reached." workerid episode = nepisodes[] steps=step 
+                        # isterminal || @debug "Max steps reached." workerid episode = nepisodes[] steps=step 
 
-                    optimizemodel!(learner, localpolicymodel, localvaluemodel, localenv, states, actions, rewards; usegpu)
+                        localpolicymodel, localvaluemodel = optimizemodel!(learner, localpolicymodel, localvaluemodel, localenv, states, actions, rewards; usegpu)
 
-                    states, actions, rewards = [], [], []
+                        states, actions, rewards = [], [], []
 
-                    nstepstart = step
+                        nstepstart = step
+                    end
                 end
+            catch e
+                throw(WorkerException(workerid, learner.policymodel, learner.valuemodel, localpolicymodel, localvaluemodel, e))
+                #=
+                if !isa(e, NaNParamException)
+                    rethrow()
+                else
+                    @warn "Episode terminated due to instability in policy network parameters." episode = nepisodes[] steps = step
+                end
+                =#
             end
 
             episode_elapsed = now() - episodestart
             trainingtime += episode_elapsed.value
 
-            evalscore, evalscoresd = evaluate(learner.policymodel, env; usegpu)
+            evalscore, evalscoresd = evaluate(learner.policymodel, localenv; usegpu)
             push!(evalscores[workerid], evalscore)     
 
             @debug "Episode completed" workerid episode = nepisodes[] steps=step evalscore evalscoresd 
@@ -110,11 +131,25 @@ function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, rng::Abs
 end
 
 function optimizemodel!(learner::A3CLearner, policymodel::AbstractPolicyModel, valuemodel::AbstractValueModel, env::AbstractEnv, states, actions, rewards; usegpu = true)
-    pgrads, vgrads = optimizemodel!(policymodel, valuemodel, env, states, actions, rewards; γ = learner.γ, β = learner.β, usegpu)
+    pgrads, vgrads = optimizemodel!(policymodel, valuemodel, env, states, actions, rewards; γ = learner.γ, β = learner.β, λ = learner.λ, updatemodels = false, usegpu)
 
+    prevpolicymodel = deepcopy(learner.policymodel)
+    prevvaluemodel = deepcopy(learner.valuemodel)
+
+    # Asynchronous: Hog Wild!
     Flux.update!(opt(learner.valuemodel), learner.valuemodel.model, vgrads[1])
     Flux.update!(opt(learner.policymodel), learner.policymodel.model, pgrads[1])
 
-    Flux.loadparams!(policymodel.model, Flux.params(learner.policymodel.model))
-    Flux.loadparams!(valuemodel.model, Flux.params(learner.valuemodel.model))
+    if any(layerparam -> any(isnan, layerparam), Flux.params(learner.policymodel.model)) 
+        badpolicymodel = learner.policymodel  
+        learner.policymodel = prevpolicymodel
+        learner.valuemodel = prevvaluemodel
+
+        throw(NaNParamException(badpolicymodel, learner.policymodel, states, actions))
+    end
+
+    # Flux.loadparams!(policymodel.model, Flux.params(learner.policymodel.model))
+    # Flux.loadparams!(valuemodel.model, Flux.params(learner.valuemodel.model))
+
+    return deepcopy(learner.policymodel), deepcopy(learner.valuemodel)
 end

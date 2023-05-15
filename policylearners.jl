@@ -110,7 +110,7 @@ function VPGLearner{PM, VM}(env::E, policyhiddendims::Vector{Int}, valuehiddendi
     return VPGLearner{E, PM, VM}(policymodel, valuemodel, epochs, env, γ, β)
 end
 
-function optimizemodel!(policymodel::AbstractPolicyModel, valuemodel::AbstractValueModel, env::AbstractEnv, states, actions, rewards; γ, β, usegpu = true) 
+function optimizemodel!(policymodel::AbstractPolicyModel, valuemodel::AbstractValueModel, env::AbstractEnv, states, actions, rewards; γ, β, λ = nothing, updatemodels = true, usegpu = true) 
     statesdata = @pipe hcat(states...) |> 
         (usegpu ? Flux.gpu(_) : _)
 
@@ -120,7 +120,7 @@ function optimizemodel!(policymodel::AbstractPolicyModel, valuemodel::AbstractVa
     nextvalue = valuemodel(usegpu ? Flux.gpu(laststate) : laststate) |> Flux.cpu |> first
     push!(rewards, failure ? 0.0 : nextvalue)
         
-    train!(policymodel, valuemodel, statesdata, actions, rewards; γ, β)
+    return λ ≢ nothing ? train!(policymodel, valuemodel, statesdata, actions, rewards, λ; γ, β, updatemodels) : train!(policymodel, valuemodel, statesdata, actions, rewards; γ, β, updatemodels)
 end
 
 function optimizemodel!(learner::VPGLearner, states, actions, rewards; usegpu = true)

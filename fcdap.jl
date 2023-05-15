@@ -40,10 +40,15 @@ end
 # end
 
 function selectaction(m::FCDAP, state; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
-    @pipe m(usegpu ? Flux.gpu(state) : state) |> 
-        Flux.cpu |> 
-        Distributions.Categorical |> 
-        rand(rng, _)
+    p = m(usegpu ? Flux.gpu(state) : state) |> Flux.cpu
+
+    try
+        @pipe Distributions.Categorical(p) |> rand(rng, _) 
+    catch e
+        print(Flux.params(m.model))
+
+        rethrow()
+    end
 end
 
 selectgreedyaction(m::FCDAP, state) = argmax(m(state))
