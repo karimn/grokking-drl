@@ -18,7 +18,9 @@ function optimizemodel!(learner::L, states, actions, rewards; usegpu = true) whe
         train!(learner.policymodel, _, actions, rewards; γ = learner.γ)
 end
 
-function step!(learner::L, currstate; policymodel = learner.policymodel, env = learner.env, rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractPolicyLearner
+policymodel(l::REINFORCELearner) = l.policymodel
+
+function step!(learner::L, currstate; policymodel = policymodel(learner), env = learner.env, rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractPolicyLearner
     action = selectaction(policymodel, currstate; rng, usegpu)
     env(action)
     newstate = Flux.cpu(state(env))
@@ -73,7 +75,7 @@ function train!(learner::L; maxminutes::Int, maxepisodes::Int, rng::AbstractRNG 
         episode_elapsed = now() - episodestart
         trainingtime += episode_elapsed.value
 
-        evalscore, evalscoresd = evaluate(learner.policymodel, env; usegpu)
+        evalscore, evalscoresd = evaluate(policymodel(learner), env; usegpu)
         push!(evalscores, evalscore)     
 
         push!(results, EpisodeResult(sum(episodetimestep), Statistics.mean(last(episodereward, 100)), Statistics.mean(last(evalscores, 100))))
@@ -89,40 +91,49 @@ function train!(learner::L; maxminutes::Int, maxepisodes::Int, rng::AbstractRNG 
         end
     end
 
-    return results, evaluate(learner.policymodel, env; nepisodes = 100, usegpu)
+    return results, evaluate(policymodel(learner), env; nepisodes = 100, usegpu)
 end
 
-struct VPGLearner{E, PM, VM} <: AbstractPolicyLearner where {E <: AbstractEnv, PM <: AbstractPolicyModel, VM <: AbstractValueModel}
-    policymodel::PM
-    valuemodel::VM
+struct VPGLearner{E, M} <: AbstractActorCriticLearner where {E <: AbstractEnv, M <: AbstractActorCriticModel}
+    model::M
     epochs::Int
     env::E
     γ::Float32
     β::Float32
 end
 
-function VPGLearner{PM, VM}(env::E, policyhiddendims::Vector{Int}, valuehiddendims::Vector{Int}, policyopt::Flux.Optimise.AbstractOptimiser, valueopt::Flux.Optimise.AbstractOptimiser; 
-                            β, γ = Float32(1.0), epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, PM <: AbstractPolicyModel, VM <: AbstractValueModel}
+function VPGLearner{M}(env::E, policyhiddendims::Vector{Int}, valuehiddendims::Vector{Int}, policyopt::Flux.Optimise.AbstractOptimiser, valueopt::Flux.Optimise.AbstractOptimiser; 
+                       β, γ = Float32(1.0), epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, M <: AbstractActorCriticModel}
     nS, nA = spacedim(env), nactions(env)
-    policymodel = PM(nS, nA, policyopt; hiddendims = policyhiddendims, usegpu)
-    valuemodel = VM(nS, valueopt; hiddendims = valuehiddendims, usegpu)
+    model = M(nS, nA, policyhiddendims, valuehiddendims, policyopt, valueopt; usegpu)
 
-    return VPGLearner{E, PM, VM}(policymodel, valuemodel, epochs, env, γ, β)
+    return VPGLearner{E, M}(model, epochs, env, γ, β)
 end
 
-function optimizemodel!(policymodel::AbstractPolicyModel, valuemodel::AbstractValueModel, env::AbstractEnv, states, actions, rewards; γ, β, λ = nothing, updatemodels = true, usegpu = true) 
+# function VPGLearner(::Type{M}, env::E, policyhiddendims::Vector{Int}, valuehiddendims::Vector{Int}, policyopt::Flux.Optimise.AbstractOptimiser, valueopt::Flux.Optimise.AbstractOptimiser; 
+#                        β, γ = Float32(1.0), epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, M <: AbstractActorCriticModel}
+#     return A3CLearner{M}(env, policyhiddendims, valuehiddendims, policyopt, valueopt,; max_nsteps = Inf, nworkers = 1, β, usegpu)
+# end
+
+environment(m::VPGLearner) = m.env
+model(m::VPGLearner) = m.model
+policymodel(m::VPGLearner) = model(m)
+discount(m::VPGLearner) = m.γ 
+entropylossweight(m::VPGLearner) = m.β
+
+function optimizemodel!(model::M, env::AbstractEnv, states, actions, rewards; γ, β, λ = nothing, updatemodels = true, usegpu = true) where {M <: AbstractActorCriticModel}
     statesdata = @pipe hcat(states...) |> 
         (usegpu ? Flux.gpu(_) : _)
 
     laststate = state(env)
     failure = is_terminated(env) && !istruncated(env)
 
-    nextvalue = valuemodel(usegpu ? Flux.gpu(laststate) : laststate) |> Flux.cpu |> first
+    nextvalue = value(model, usegpu ? Flux.gpu(laststate) : laststate) |> Flux.cpu |> first
     push!(rewards, failure ? 0.0 : nextvalue)
         
-    return λ ≢ nothing ? train!(policymodel, valuemodel, statesdata, actions, rewards, λ; γ, β, updatemodels) : train!(policymodel, valuemodel, statesdata, actions, rewards; γ, β, updatemodels)
+    return λ ≢ nothing ? train!(model, statesdata, actions, rewards, λ; γ, β, updatemodels) : train!(model, statesdata, actions, rewards; γ, β, updatemodels)
 end
 
-function optimizemodel!(learner::VPGLearner, states, actions, rewards; usegpu = true)
-    optimizemodel!(learner.policymodel, learner.valuemodel, learner.env, states, actions, rewards; γ = learner.γ, β = learner.β, usegpu)
+function optimizemodel!(learner::L, states, actions, rewards; usegpu = true) where L <: AbstractActorCriticLearner 
+    optimizemodel!(model(learner), environment(learner), states, actions, rewards; γ = discount(learner), β = entropylossweight(learner), usegpu)
 end

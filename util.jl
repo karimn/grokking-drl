@@ -42,10 +42,8 @@ Base.showerror(io::IO, ::NaNParamException) = print(io, "NaNParamException: foun
 
 struct WorkerException <: Base.Exception
     workerid::Int
-    sharedpolicymodel::AbstractModel
-    sharedvaluemodel::AbstractModel
-    localpolicymodel::AbstractModel
-    localvaluemodel::AbstractModel
+    sharedmodel::AbstractModel
+    localmodel::AbstractModel
 
     innerexception::Base.Exception
 end

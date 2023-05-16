@@ -1,6 +1,5 @@
-struct A3CLearner{E, PM, VM} <: AbstractPolicyLearner where {E <: AbstractEnv, PM <: AbstractPolicyModel, VM <: AbstractValueModel}
-    policymodel::PM
-    valuemodel::VM
+struct A3CLearner{E, M} <: AbstractPolicyLearner where {E <: AbstractEnv, M <: AbstractActorCriticModel}
+    model::M
     epochs::Int
     env::E
     γ::Float32
@@ -10,22 +9,20 @@ struct A3CLearner{E, PM, VM} <: AbstractPolicyLearner where {E <: AbstractEnv, P
     nworkers::Int
 end
 
-function A3CLearner{PM, VM}(env::E, policyhiddendims::Vector{Int}, valuehiddendims::Vector{Int}, policyopt::Flux.Optimise.AbstractOptimiser, valueopt::Flux.Optimise.AbstractOptimiser; 
-                            max_nsteps, nworkers, β, γ = Float32(1.0), epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, PM <: AbstractPolicyModel, VM <: AbstractValueModel}
+function A3CLearner{M}(env::E, policyhiddendims::Vector{Int}, valuehiddendims::Vector{Int}, policyopt::Flux.Optimise.AbstractOptimiser, valueopt::Flux.Optimise.AbstractOptimiser; 
+                       max_nsteps, nworkers, β, γ = Float32(1.0), epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, M <: AbstractActorCriticModel}
     nS, nA = spacedim(env), nactions(env)
-    policymodel = PM(nS, nA, policyopt; hiddendims = policyhiddendims, usegpu)
-    valuemodel = VM(nS, valueopt; hiddendims = valuehiddendims, usegpu)
+    model = M(nS, nA, policyhiddendims, valuehiddendims, policyopt, valueopt; usegpu)
 
-    return A3CLearner{E, PM, VM}(policymodel, valuemodel, epochs, env, γ, β, nothing, max_nsteps, nworkers)
+    return A3CLearner{E, M}(model, epochs, env, γ, β, nothing, max_nsteps, nworkers)
 end
 
-function GAELearner(::Type{PM}, ::Type{VM}, env::E, policyhiddendims::Vector{Int}, valuehiddendims::Vector{Int}, policyopt::Flux.Optimise.AbstractOptimiser, valueopt::Flux.Optimise.AbstractOptimiser; 
-                     max_nsteps, nworkers, β, λ, γ = Float32(1.0), epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, PM <: AbstractPolicyModel, VM <: AbstractValueModel}
+function GAELearner(::Type{M}, env::E, policyhiddendims::Vector{Int}, valuehiddendims::Vector{Int}, policyopt::Flux.Optimise.AbstractOptimiser, valueopt::Flux.Optimise.AbstractOptimiser; 
+                     max_nsteps, nworkers, β, λ, γ = Float32(1.0), epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, M <: AbstractActorCriticModel}
     nS, nA = spacedim(env), nactions(env)
-    policymodel = PM(nS, nA, policyopt; hiddendims = policyhiddendims, usegpu)
-    valuemodel = VM(nS, valueopt; hiddendims = valuehiddendims, usegpu)
+    model = M(nS, nA, policyhiddendims, valuehiddendims, policyopt, valueopt; usegpu)
 
-    return A3CLearner{E, PM, VM}(policymodel, valuemodel, epochs, env, γ, β, λ, max_nsteps, nworkers)
+    return A3CLearner{E, M}(model, epochs, env, γ, β, λ, max_nsteps, nworkers)
 end
 
 function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
@@ -42,8 +39,7 @@ function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, rng::Abs
 
     @threads for workerid in 1:learner.nworkers
         localenv = deepcopy(learner.env)
-        localpolicymodel = deepcopy(learner.policymodel)
-        localvaluemodel = deepcopy(learner.valuemodel)
+        localmodel = deepcopy(learner.model)
 
         evalscores[workerid] = Float32[]
         episodereward[workerid] = Float32[]
@@ -75,7 +71,7 @@ function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, rng::Abs
 
                     push!(states, copy(currstate))
 
-                    action, newstate, curr_reward, isterminal, _ = step!(learner, currstate; policymodel = localpolicymodel, env = localenv, rng, usegpu) 
+                    action, newstate, curr_reward, isterminal, _ = step!(learner, currstate; policymodel = localmodel, env = localenv, rng, usegpu) 
 
                     push!(actions, action)
                     push!(rewards, curr_reward)
@@ -90,7 +86,7 @@ function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, rng::Abs
                         # isterminal && @debug "Terminal state reached." workerid episode = nepisodes[] steps=step 
                         # isterminal || @debug "Max steps reached." workerid episode = nepisodes[] steps=step 
 
-                        localpolicymodel, localvaluemodel = optimizemodel!(learner, localpolicymodel, localvaluemodel, localenv, states, actions, rewards; usegpu)
+                        localmodel = optimizemodel!(learner, localmodel, localenv, states, actions, rewards; usegpu)
 
                         states, actions, rewards = [], [], []
 
@@ -98,20 +94,13 @@ function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, rng::Abs
                     end
                 end
             catch e
-                throw(WorkerException(workerid, learner.policymodel, learner.valuemodel, localpolicymodel, localvaluemodel, e))
-                #=
-                if !isa(e, NaNParamException)
-                    rethrow()
-                else
-                    @warn "Episode terminated due to instability in policy network parameters." episode = nepisodes[] steps = step
-                end
-                =#
+                throw(WorkerException(workerid, learner.model, localmodel, e))
             end
 
             episode_elapsed = now() - episodestart
             trainingtime += episode_elapsed.value
 
-            evalscore, evalscoresd = evaluate(learner.policymodel, localenv; usegpu)
+            evalscore, evalscoresd = evaluate(learner.model, localenv; usegpu)
             push!(evalscores[workerid], evalscore)     
 
             @debug "Episode completed" workerid episode = nepisodes[] steps=step evalscore evalscoresd 
@@ -127,29 +116,14 @@ function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, rng::Abs
         end
     end
 
-    return results, evaluate(learner.policymodel, env; nepisodes = 100, usegpu)
+    return results, evaluate(learner.model, env; nepisodes = 100, usegpu)
 end
 
-function optimizemodel!(learner::A3CLearner, policymodel::AbstractPolicyModel, valuemodel::AbstractValueModel, env::AbstractEnv, states, actions, rewards; usegpu = true)
-    pgrads, vgrads = optimizemodel!(policymodel, valuemodel, env, states, actions, rewards; γ = learner.γ, β = learner.β, λ = learner.λ, updatemodels = false, usegpu)
-
-    prevpolicymodel = deepcopy(learner.policymodel)
-    prevvaluemodel = deepcopy(learner.valuemodel)
+function optimizemodel!(learner::A3CLearner, localmodel::M, env::AbstractEnv, states, actions, rewards; usegpu = true) where M <: AbstractActorCriticModel
+    grads = optimizemodel!(localmodel, env, states, actions, rewards; γ = learner.γ, β = learner.β, λ = learner.λ, updatemodels = true, usegpu)
 
     # Asynchronous: Hog Wild!
-    Flux.update!(opt(learner.valuemodel), learner.valuemodel.model, vgrads[1])
-    Flux.update!(opt(learner.policymodel), learner.policymodel.model, pgrads[1])
+    update!(learner.model, grads)
 
-    if any(layerparam -> any(isnan, layerparam), Flux.params(learner.policymodel.model)) 
-        badpolicymodel = learner.policymodel  
-        learner.policymodel = prevpolicymodel
-        learner.valuemodel = prevvaluemodel
-
-        throw(NaNParamException(badpolicymodel, learner.policymodel, states, actions))
-    end
-
-    # Flux.loadparams!(policymodel.model, Flux.params(learner.policymodel.model))
-    # Flux.loadparams!(valuemodel.model, Flux.params(learner.valuemodel.model))
-
-    return deepcopy(learner.policymodel), deepcopy(learner.valuemodel)
+    return deepcopy(learner.model)   
 end

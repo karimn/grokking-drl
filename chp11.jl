@@ -15,6 +15,7 @@ include("cartpole.jl")
 include("fcq.jl")
 include("fcdap.jl")
 include("fcv.jl")
+include("doublenetworkac.jl")
 include("policylearners.jl")
 include("a3c.jl")
 include("parallelenv.jl")
@@ -68,8 +69,8 @@ prog = Progress(numlearners)
 
 for _ in 1:numlearners
     # This is equivalent to:
-    # learner = A3CLearner{FCDAP, FCV}(env, [128, 64], [256, 128], Flux.RMSProp(0.0005), Flux.RMSProp(0.0007); max_nsteps = 50_000, nworkers = 1, β = 0.001, usegpu)
-    learner = VPGLearner{FCDAP, FCV}(env, [128, 64], [256, 128], Flux.RMSProp(0.0005), Flux.RMSProp(0.0007); β = 0.001, usegpu)
+    # learner = A3CLearner{DoubleNetworkActorCriticModel{FCDAP, FCV}}(env, [128, 64], [256, 128], Flux.RMSProp(0.0005), Flux.RMSProp(0.0007); max_nsteps = 50_000, nworkers = 1, β = 0.001, usegpu)
+    learner = VPGLearner{DoubleNetworkActorCriticModel{FCDAP, FCV}}(env, [128, 64], [256, 128], Flux.RMSProp(0.0005), Flux.RMSProp(0.0007); β = 0.001, usegpu)
     results, (evalscore, _) = train!(learner; maxminutes, maxepisodes, usegpu)
 
     push!(dqnresults, results)
@@ -95,7 +96,7 @@ dqnresults = []
 prog = Progress(numlearners)
 
 for _ in 1:numlearners
-    learner = A3CLearner{FCDAP, FCV}(env, [128, 64], [256, 128], Flux.RMSProp(0.0005), Flux.RMSProp(0.0007); max_nsteps, nworkers = 8, β = 0.001, usegpu)
+    learner = A3CLearner{DoubleNetworkActorCriticModel{FCDAP, FCV}}(env, [128, 64], [256, 128], Flux.RMSProp(0.0005), Flux.RMSProp(0.0007); max_nsteps, nworkers = 8, β = 0.001, usegpu)
     results, (evalscore, _) = train!(learner; maxminutes = 10, maxepisodes, usegpu)
 
     push!(dqnresults, results)
@@ -124,7 +125,7 @@ ex = nothing
 
 try
     for _ in 1:numlearners
-        learner = GAELearner(FCDAP, FCV, env, [128, 64], [256, 128], Flux.Adam(0.0005), Flux.RMSProp(0.0007); max_nsteps, nworkers, β = 0.001, λ = 0.95, usegpu)
+        learner = GAELearner(DoubleNetworkActorCriticModel{FCDAP, FCV}, env, [128, 64], [256, 128], Flux.Adam(0.0005), Flux.RMSProp(0.0007); max_nsteps, nworkers, β = 0.001, λ = 0.95, usegpu)
         results, (evalscore, _) = train!(learner; maxminutes = 10, maxepisodes, usegpu)
 
         push!(dqnresults, results)
