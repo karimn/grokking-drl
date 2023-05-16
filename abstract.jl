@@ -1,3 +1,4 @@
+abstract type AbstractAsyncEnv <: RLBase.AbstractEnv end
 abstract type AbstractModel end
 abstract type AbstractValueModel <: AbstractModel end
 abstract type AbstractPolicyModel <: AbstractModel end

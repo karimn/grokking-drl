@@ -1,4 +1,4 @@
-struct ParallelEnv{E} <: AbstractEnv where {E <: AbstractEnv}
+struct ParallelEnv{E <: AbstractEnv} <: AbstractAsyncEnv 
     env::E
     nworkers::Int
     inchannels::Vector{Channel}
@@ -30,7 +30,7 @@ function ParallelEnv(e::E, nworkers::Int) where E <: AbstractEnv
     return newenv
 end
 
-Base.show(io, e::ParallelEnv) = print(io, "[ParallelEnv with $(e.nworkers) workers]")
+#Base.show(io::IO, e::ParallelEnv) = print(io, "[ParallelEnv with $(e.nworkers) workers]")
 
 Base.put!(c::Channel, e::E) where E <: AbstractEnv = put!(c, (state(e), reward(e), is_terminated(e), istruncated(e)))
 
@@ -59,7 +59,9 @@ RLBase.action_space(e::ParallelEnv) = action_space(e.env)
 RLBase.state(e::ParallelEnv) = e.states
 RLBase.state_space(e::ParallelEnv) = state_space(e.env)
 RLBase.reward(e::ParallelEnv) = e.rewards
-RLBase.is_terminated(e::ParallelEnv) = e.terminated
+RLBase.is_terminated(e::ParallelEnv) = any(e.terminated)
+istruncated(e::ParallelEnv) = any(e.truncated)
+RLBase.is_terminated(e::ParallelEnv) = false 
 istruncated(e::ParallelEnv) = e.truncated
 
 function RLBase.reset!(e::ParallelEnv)  
