@@ -7,6 +7,7 @@ using ProgressMeter
 using StatsBase: sample, wsample
 using DataFrames
 using Dates: now
+using Base: put!, take!
 
 include("abstract.jl")
 include("util.jl")
@@ -16,6 +17,7 @@ include("fcdap.jl")
 include("fcv.jl")
 include("policylearners.jl")
 include("a3c.jl")
+include("parallelenv.jl")
 
 const usegpu = true 
 const numlearners = 5
