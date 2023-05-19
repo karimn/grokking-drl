@@ -71,8 +71,6 @@ RLBase.state_space(e::ParallelEnv) = state_space(e.env)
 RLBase.reward(e::ParallelEnv) = e.rewards
 RLBase.is_terminated(e::ParallelEnv) = any(e.terminated)
 istruncated(e::ParallelEnv) = any(e.truncated)
-RLBase.is_terminated(e::ParallelEnv) = false 
-istruncated(e::ParallelEnv) = e.truncated
 
 function RLBase.reset!(e::ParallelEnv)  
     for c in e.cmdchannels
