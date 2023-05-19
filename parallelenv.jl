@@ -72,25 +72,33 @@ RLBase.reward(e::ParallelEnv) = e.rewards
 RLBase.is_terminated(e::ParallelEnv) = any(e.terminated)
 istruncated(e::ParallelEnv) = any(e.truncated)
 
-function RLBase.reset!(e::ParallelEnv)  
-    for c in e.cmdchannels
-        put!(c, :reset)
-    end
+is_terminateds(e::ParallelEnv) = e.terminated
+istruncateds(e::ParallelEnv) = e.truncated
 
-    refreshinfo!(e)
+function RLBase.reset!(e::ParallelEnv, i)
+    put!.(e.cmdchannels[i], :reset)
+    refreshinfo!(e, i)
 end
 
-function (env::ParallelEnv)(actions) 
-    for (c, a) in zip(env.cmdchannels, actions)
-        put!(c, :step)
-        put!(c, a)
-    end
+RLBase.reset!(e::ParallelEnv) = reset!(e, :)  
 
+function (env::ParallelEnv)(actions) 
+    put!.(env.cmdchannels, :step)
+    put!.(env.cmdchannels, actions)
     refreshinfo!(env)
 end
 
-function refreshinfo!(e::ParallelEnv)
-    for (i, c) in enumerate(e.inchannels)
-        e.states[i], e.rewards[i], e.terminated[i], e.truncated[i] = take!(c)
+nactions(e::ParallelEnv) = nactions(e.env) 
+spacedim(e::ParallelEnv) = spacedim(e.env) 
+
+function refreshinfo!(e::ParallelEnv, i)
+    put!.(e.cmdchannels[i], :query)
+
+    for (wid, s) in zip(axes(e.inchannels)[1][i], take!.(e.inchannels[i]))
+        e.states[wid], e.rewards[wid], e.terminated[wid], e.truncated[wid] = s 
     end
 end
+
+refreshinfo!(e::ParallelEnv) = refreshinfo!(e, :)
+
+close!(e::ParallelEnv) = put!.(e.cmdchannels, :exit)
