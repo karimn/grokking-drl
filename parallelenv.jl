@@ -14,7 +14,7 @@ function ParallelEnv(e::E, nworkers::Int) where E <: AbstractEnv
     inchannels = [Channel(2) for _ in 1:nworkers]
     cmdchannels = [Channel(1) for _ in 1:nworkers]
     channels = zip(inchannels, cmdchannels)
-    workers = [@task envworker(deepcopy(e), input = outch, output = inch) for (inch, outch) in channels]
+    workers = [@task envworker(wid, deepcopy(e), input = outch, output = inch) for (wid, (inch, outch)) in enumerate(channels)]
 
     for (worker, (inch, outch)) in zip(workers, channels)
         bind(inch, worker)
@@ -32,20 +32,30 @@ end
 
 #Base.show(io::IO, e::ParallelEnv) = print(io, "[ParallelEnv with $(e.nworkers) workers]")
 
-Base.put!(c::Channel, e::E) where E <: AbstractEnv = put!(c, (state(e), reward(e), is_terminated(e), istruncated(e)))
+function Base.put!(c::Channel, e::E) where E <: AbstractEnv 
+    status = (state(e), reward(e), is_terminated(e), istruncated(e))
 
-function envworker(localenv::E; input::Channel, output::Channel) where E <: AbstractEnv
+    #@debug "Returning status" status
+
+    put!(c, status)
+end
+
+function envworker(wid::Int, localenv::E; input::Channel, output::Channel) where E <: AbstractEnv
     exit = false
 
     while !exit
         cmd = take!(input)
+
+        #@debug "Worker command received" wid cmd
 
         if cmd == :reset
             reset!(localenv)
             put!(output, localenv) 
         elseif cmd == :step
             a = take!(input)
+            #@debug "Worker step" wid a
             localenv(a)
+        elseif cmd == :query
             put!(output, localenv) 
         elseif cmd == :pastlimit
             put!(output, false)
