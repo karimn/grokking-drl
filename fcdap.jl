@@ -1,9 +1,10 @@
 struct FCDAP <: AbstractPolicyModel
     model
-    opt
 end
 
-function FCDAP(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, usegpu = true)
+@functor FCDAP
+
+function FCDAP(inputdim::Int, outputdim::Int, hiddendims::Vector{Int}; actfn = Flux.relu, usegpu = true)
     hiddenlayers = Vector{Any}(nothing, length(hiddendims) - 1)
 
     for i in 1:(length(hiddendims) - 1)
@@ -21,76 +22,57 @@ function FCDAP(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOp
         modelchain = modelchain |> Flux.gpu
     end
 
-    opt = Flux.setup(valueopt, modelchain)
-
-    return FCDAP(modelchain, opt)
+    return FCDAP(modelchain)
 end
 
-(m::FCDAP)(state) = m.model(state)
-
-# function fullpass(m::FCDAP, state; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
-#     p = m(usegpu ? Flux.gpu(state) : state) |> Flux.cpu
-#     dist = Distributions.Categorical(p)
-#     action = rand(rng, dist)
-#     logpa = @inbounds Distributions.logpdf(dist, action)  
-#     ent = Distributions.entropy(dist)
-#     isexplore = action != argmax(p)
-
-#     return action, isexplore, logpa, ent
-# end
+π(m::FCDAP, state) = m.model(state)
 
 function selectaction(m::FCDAP, state; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
-    p = m(usegpu ? Flux.gpu(state) : state) |> Flux.cpu
+    p = π(m, usegpu ? Flux.gpu(state) : state) |> Flux.cpu
 
-    try
-        @pipe Distributions.Categorical(p) |> rand(rng, _) 
-    catch e
-        print(Flux.params(m.model))
-
-        rethrow()
-    end
+    return rand.(rng, Distributions.Categorical.(copy(colp) for colp in eachcol(p)))
 end
 
-selectgreedyaction(m::FCDAP, state) = argmax(m(state))
+selectgreedyaction(m::FCDAP, state; usegpu = true) = argmax(π(m, usegpu ? Flux.gpu(state) : state))
 
-function train!(m::M, states, actions, rewards; γ = 1.0) where M <: AbstractPolicyModel 
+function train!(m::FCDAP, states, actions, rewards, opt; γ = 1.0)
     T = size(states, 2)
     discounts = γ.^range(0, T - 1)
     returns = [sum(discounts[begin:(T - t + 1)] .* rewards[t:end]) for t in 1:T] 
 
-    val, grads = Flux.withgradient(m.model, states, actions, returns, discounts) do modelchain, s, a, r, d
-        lpdf = @pipe modelchain(s) |> 
+    val, grads = Flux.withgradient(m, states, actions, returns, discounts) do policymodel, s, a, r, d
+        lpdf = @pipe π(policymodel, s) |> 
             log.(_) |> 
             Flux.cpu |> 
             [collpdf[colact] for (collpdf, colact) in zip(eachcol(_), a)] 
             #Distributions.Categorical.(_) |> 
             #@inbounds Distributions.logpdf.(_, actions)
 
-        - Statistics.mean(d .* r .* lpdf)
+        - mean(d .* r .* lpdf)
     end
 
-    if !isfinite(val)
-        @warn "loss is $val"
-    end
+    !isfinite(val) && @warn "loss is $val"
 
-    Flux.update!(m.opt, m.model, grads[1])
+    Flux.update!(opt, m, grads[1])
 end
 
-function evaluate(m::M, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where M <: AbstractPolicyModel
+function evaluate(m::M, env::AbstractEnv; nepisodes = 1, greedy = true, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where M <: Union{AbstractPolicyModel, AbstractActorCriticModel}
     rs = []
+
+    env = deepcopy(env)
 
     for _ in 1:nepisodes
         reset!(env)
-        s, d = Vector{Float32}(state(env)), false
+        s, d = state(env), false
         push!(rs, 0)
 
         while !d 
-            a = selectaction(m, s; rng, usegpu)
-            env(a)
+            a = greedy ? selectgreedyaction(m, s; usegpu) : selectaction(m, s; rng, usegpu)
+            env(only(a))
             s, r, d = state(env), reward(env), is_terminated(env)
             rs[end] += r
         end
     end
 
-    return Statistics.mean(rs), Statistics.std(rs)
+    return mean(rs), std(rs)
 end

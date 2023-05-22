@@ -5,7 +5,7 @@ struct FCQ <: AbstractValueModel
     lossfn
 end
 
-function CreateSimpleFCModel(::Type{M}, inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int}, actfn, lossfn, usegpu) where M <: AbstractModel
+function CreateSimpleFCModel(::Type{M}, inputdim::Int, outputdim::Int, opt::Union{Nothing, Flux.Optimise.AbstractOptimiser} = nothing; hiddendims::Vector{Int}, actfn, lossfn, usegpu) where M <: AbstractModel
     hiddenlayers = Vector{Any}(nothing, length(hiddendims) - 1)
 
     for i in 1:(length(hiddendims) - 1)
@@ -22,9 +22,13 @@ function CreateSimpleFCModel(::Type{M}, inputdim::Int, outputdim::Int, valueopt:
         modelchain = modelchain |> Flux.gpu
     end
 
-    opt = Flux.setup(valueopt, modelchain)
+    if opt ≢ nothing
+        opt = Flux.setup(opt, modelchain)
 
-    return M(modelchain, opt, lossfn)
+        return M(modelchain, opt, lossfn)
+    else
+        return M(modelchain, lossfn)
+    end
 end
 
 function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, args...) -> Flux.mse(ŷ, y), usegpu = true)
@@ -34,8 +38,6 @@ end
 (m::FCQ)(state) = m.model(state) 
 
 function train!(m::M, data, actions, weights) where M <: AbstractValueModel 
-    #Flux.train!(loss, m.model, data, m.opt) 
-    
     input, label = data 
     local tderrors
 
@@ -82,7 +84,7 @@ function optimizemodel!(onlinemodel::M, experiences::B, epochs, γ; targetmodel:
     end
 end
 
-opt(m::M) where M <: AbstractModel = m.opt
+opt(m::FCQ) = m.opt
 
 function save(m::M, filename) where M <: AbstractValueModel
     model = m.model |> Flux.cpu

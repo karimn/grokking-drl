@@ -28,6 +28,8 @@ function evaluate(strategy::S, m::AbstractValueModel, env::AbstractEnv; nepisode
     rs = []
     steps = []
 
+    env = deepcopy(env)
+
     for _ in 1:nepisodes
         reset!(env)
         s, d = Vector{Float32}(state(env)), false
