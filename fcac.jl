@@ -41,7 +41,6 @@ function selectaction(m::FCAC, state; rng::AbstractRNG = Random.GLOBAL_RNG, useg
     try
         return rand.(rng, Distributions.Categorical.(copy(colp) for colp in eachcol(p)))
     catch e
-        print(p)
         throw(NaNParamException(m, state))
     end
 end
