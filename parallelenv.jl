@@ -30,12 +30,12 @@ function ParallelEnv(e::E, nworkers::Int) where E <: AbstractEnv
     return newenv
 end
 
-#Base.show(io::IO, e::ParallelEnv) = print(io, "[ParallelEnv with $(e.nworkers) workers]")
+ParallelEnv(e::ParallelEnv) = ParallelEnv(e.env, e.nworkers) 
+
+innerenv(e::ParallelEnv) = e.env
 
 function Base.put!(c::Channel, e::E) where E <: AbstractEnv 
     status = (state(e), reward(e), is_terminated(e), istruncated(e))
-
-    #@debug "Returning status" status
 
     put!(c, status)
 end
@@ -46,14 +46,10 @@ function envworker(wid::Int, localenv::E; input::Channel, output::Channel) where
     while !exit
         cmd = take!(input)
 
-        #@debug "Worker command received" wid cmd
-
         if cmd == :reset
             reset!(localenv)
-            put!(output, localenv) 
         elseif cmd == :step
             a = take!(input)
-            #@debug "Worker step" wid a
             localenv(a)
         elseif cmd == :query
             put!(output, localenv) 
