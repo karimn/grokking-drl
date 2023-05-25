@@ -20,14 +20,30 @@ selectaction(m::DoubleNetworkActorCriticModel, state; rng::AbstractRNG = Random.
 selectgreedyaction(m::DoubleNetworkActorCriticModel, state; usegpu = true) = selectgreedyaction(m.policymodel, state; usegpu)
 
 function Flux.update!(::Nothing, m::DoubleNetworkActorCriticModel, grads::Tuple) 
-    Flux.update!(m.policymodelopt, m.policymodel, grads[1])
-    Flux.update!(m.valuemodelopt, m.valuemodel, grads[2])
+    Flux.update!(m, grads)
 end
 
-function train!(m::DoubleNetworkActorCriticModel, states, actions, rewards, λ::Union{Nothing, Float32} = nothing, opt::Nothing = nothing; entropylossweight = 1.0, γ = 1.0, updatemodel = true)
+function Flux.update!(m::DoubleNetworkActorCriticModel, grads::Tuple) 
+    Flux.update!(m, grads[1], grads[2])
+end
+
+function Flux.update!(m::DoubleNetworkActorCriticModel, pgrads, vgrads) 
+    Flux.update!(m.policymodelopt, m.policymodel, pgrads[1])
+    Flux.update!(m.valuemodelopt, m.valuemodel, vgrads[1])
+end
+
+function train!(m::DoubleNetworkActorCriticModel, states, actions, rewards, λ::Union{Nothing, Float32} = nothing, opt::Nothing = nothing; valuelossweight = 1.0, policylossweight = 1.0, entropylossweight = 1.0, γ = 1.0) 
+    flatrewards = reduce(vcat, rewards)
+    flatactions = reduce(vcat, actions)
+
+    @assert length(flatrewards) == length(rewards) && length(flatactions) == length(actions) "Only handling a single environment"
+
+    train!(m, states, flatactions, flatrewards, λ; valuelossweight, policylossweight, entropylossweight, γ)
+end
+
+function Flux.withgradient(m::DoubleNetworkActorCriticModel, states, actions, rewards::Vector{R}, λ::Union{Nothing, Float32} = nothing; valuelossweight = 1.0, policylossweight = 1.0, entropylossweight = 1.0, γ = 1.0) where R <: Real
     T = length(rewards) 
     discounts = γ.^range(0, T - 1)
-    λ_discounts = (λ * γ).^range(0, T - 1) 
     returns = [sum(discounts[1:(T - t + 1)] .* rewards[t:end]) for t in 1:T] 
 
     values = nothing 
@@ -35,8 +51,10 @@ function train!(m::DoubleNetworkActorCriticModel, states, actions, rewards, λ::
     vval, vgrads = Flux.withgradient(m.valuemodel, states, returns) do valuemodel, s, r
         values = 𝒱(valuemodel, s) |> Flux.cpu |> vec 
 
-        return ℒ(valuemodel, values, r[1:(end - 1)])
+        return valuelossweight * ℒ(valuemodel, values, r[1:(end - 1)])
     end
+
+    isfinite(vval) || @warn "Value loss is $vval"
 
     if λ ≡ nothing
         pop!(returns)
@@ -44,6 +62,8 @@ function train!(m::DoubleNetworkActorCriticModel, states, actions, rewards, λ::
         Ψ = returns - values
     else
         push!(values, last(rewards))
+
+        λ_discounts = (λ * γ).^range(0, T - 1) 
 
         advs = rewards[1:(end - 1)] + γ * values[2:end] - values[1:(end - 1)]
         Ψ = [sum(λ_discounts[1:(T - t)] .* advs[t:end]) for t in 1:(T - 1)] 
@@ -58,14 +78,23 @@ function train!(m::DoubleNetworkActorCriticModel, states, actions, rewards, λ::
         entropyloss = - mean(ent_lpdf[1, :])
         policyloss = - mean(d .* Ψ .* ent_lpdf[2,:]) 
 
-        return policyloss + entropylossweight * entropyloss 
+        return policylossweight * policyloss + entropylossweight * entropyloss 
     end
 
-    isfinite(vval) || @warn "Value loss is $vval"
     isfinite(pval) || @warn "Policy loss is $pval"
 
-    updatemodel && Flux.update!(m, (pgrads, vgrads))
+    return Tuple(((pg,), (vg,)) for (pg, vg) in zip(pgrads, vgrads))
+end
 
-    return Tuple(x for x in zip(pgrads, vgrads))
+function train!(m::DoubleNetworkActorCriticModel, states, actions, rewards::Vector{R}, λ::Union{Nothing, Float32} = nothing; valuelossweight = 1.0, policylossweight = 1.0, entropylossweight = 1.0, γ = 1.0) where R <: Real
+    grads = Flux.withgradient(m, states, actions, rewards, λ; valuelossweight, policylossweight, entropylossweight, γ)  
+
+    try
+        Flux.update!(m, grads[1][1], grads[1][2])
+    catch e
+        throw(GradientException(m, states, actions, nothing, e, nothing, 1, length(rewards), (λ * γ).^range(0, length(rewards) - 1), (pgrads, vgrads)))
+    end
+
+    return grads 
 end
 

@@ -13,6 +13,15 @@ function update!(to::Flux.Chain, from::Flux.Chain; τ = 1.0)
     return to 
 end
 
+function calcgaes(values, rewards, λ_discounts; N = 1, γ = 1.0)
+    T = length(rewards) ÷ N
+
+    advs = reshape(rewards[1:(end - N)] .+ γ * values[(N + 1):end] - values[1:(end - N)], N, :)
+    gaes = reduce(hcat, sum(λ_discounts[1:(T - t)]' .* advs[:, t:end], dims = 2) for t in 1:(T - 1)) 
+
+    return advs, gaes 
+end
+
 struct NaNParamException <: Base.Exception
     model::AbstractModel
     #prevmodel::AbstractModel
@@ -28,6 +37,16 @@ end
 Base.showerror(io::IO, ::NaNParamException) = print(io, "NaNParamException: found NaN values in network parameters")
 
 #(e::NaNParamException)() = e.prevmodel(e.states)
+
+struct CorruptedNetworkException <: Base.Exception 
+    prevlearner
+    states
+    actions
+    rewards
+    innerex
+
+    CorruptedNetworkException(args...; innerex = nothing) = new(args..., innerex)
+end
 
 struct WorkerException <: Base.Exception
     workerid::Int
@@ -58,4 +77,6 @@ struct GradientException <: Base.Exception
     Ψ
     N
     T
+    λ_discounts
+    grads
 end

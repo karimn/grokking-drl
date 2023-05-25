@@ -33,12 +33,26 @@ policymodel(l::A2CLearner) = l.model
 environment(l::A2CLearner) = l.env
 opt(l::A2CLearner) = l.modelopt
 
-function step!(learner::A2CLearner, currstate; policymodel = policymodel(learner), env = environment(learner), rng = Random.GLOBAL_RNG, usegpu = true)
-    action = selectaction(policymodel, reduce(hcat, currstate); rng, usegpu)
+function _step!(learner::A2CLearner{E}, action; env) where E <: AbstractAsyncEnv
     env(action)
     newstate = Flux.cpu.(state(env))
 
     return action, newstate, reward(env), is_terminated(env), istruncated(env)
+end
+
+function _step!(learner::A2CLearner{E}, action; env) where E <: AbstractEnv
+    env(only(action))
+    newstate = Flux.cpu.(state(env))
+
+    return action, newstate, reward(env), is_terminated(env), istruncated(env)
+end
+
+function step!(learner::A2CLearner{E}, currstate::Vector; policymodel = policymodel(learner), env::E = environment(learner), rng = Random.GLOBAL_RNG, usegpu = true) where E <: AbstractAsyncEnv 
+    _step!(learner, selectaction(policymodel, currstate; rng, usegpu); env)
+end
+
+function step!(learner::A2CLearner{E, FCAC}, currstate::Vector; policymodel = policymodel(learner), env::E = environment(learner), rng = Random.GLOBAL_RNG, usegpu = true) where E <: AbstractAsyncEnv 
+    _step!(learner, selectaction(policymodel, reduce(hcat, currstate); rng, usegpu); env)
 end
 
 function train!(learner::A2CLearner; maxminutes::Int, maxepisodes::Int, goal_mean_reward, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
@@ -63,74 +77,107 @@ function train!(learner::A2CLearner; maxminutes::Int, maxepisodes::Int, goal_mea
     trainingdone = false
 
     while !trainingdone
-        step += 1
+        try
+            step += 1
 
-        push!(states, deepcopy(currstate))
+            push!(states, deepcopy(currstate))
 
-        action, newstate, curr_reward, isterminal, _ = step!(learner, currstate; rng, usegpu) 
+            action, newstate, curr_reward, isterminal, _ = step!(learner, currstate; rng, usegpu) 
 
-        push!(actions, action)
-        push!(rewards, curr_reward)
+            push!(actions, copy(action))
+            push!(rewards, copy(curr_reward))
 
-        running_timestep .+= 1
-        running_reward += curr_reward 
+            @assert length(actions) == (step - n_steps_start)
+            @assert length(rewards) == (step - n_steps_start)
 
-        currstate = newstate
+            running_timestep .+= 1
+            running_reward .+= curr_reward 
 
-        if isterminal || step - n_steps_start >= learner.max_nsteps
-            optimizemodel!(learner, states, actions, rewards; usegpu) 
+            currstate = newstate
 
-            empty!(states) 
-            empty!(actions)
-            empty!(rewards)
+            if isterminal || step - n_steps_start >= learner.max_nsteps
+                prevlearner = deepcopy(learner)
+                prevcontext = (deepcopy(states), deepcopy(actions), deepcopy(rewards))
 
-            n_steps_start = step
-        end
+                #@debug "Pre" isterminal states actions rewards
 
-        if isterminal
-            episodedone = now()
-            evalscore, evalscoresd = evaluate(policymodel(learner), innerenv(learner.env); usegpu)
+                try
+                    optimizemodel!(learner, states, actions, rewards; usegpu) 
+                catch e
+                    throw(CorruptedNetworkException(prevlearner, prevcontext..., innerex = e))
+                end
 
-            terminatedidx = findall(is_terminateds(learner.env))
+                #@debug "Post" states actions rewards
 
-            reset!(learner.env, terminatedidx)
-            newstate = state(learner.env)
+                any(p -> any(isnan, p), Flux.params(learner.model)) && throw(CorruptedNetworkException(prevlearner, prevcontext...))
 
-            push!(episodetimestep, running_timestep[terminatedidx]...)
-            push!(episodereward, running_reward[terminatedidx]...)
-            push!(episodeseconds, (episodedone - running_seconds[terminatedidx])...)
-            episode += length(terminatedidx) 
-            push!(evalscores, evalscore)
+                empty!(states) 
+                empty!(actions)
+                empty!(rewards)
+
+                n_steps_start = step
+            end
+
+            if isterminal
+                episodedone = now()
+                evalscore, evalscoresd = evaluate(policymodel(learner), innerenv(learner.env); usegpu)
+
+                terminatedidx = findall(is_terminateds(learner.env))
+
+                reset!(learner.env, terminatedidx)
+                newstate = state(learner.env)
+
+                push!(episodetimestep, running_timestep[terminatedidx]...)
+                push!(episodereward, running_reward[terminatedidx]...)
+                push!(episodeseconds, (episodedone - running_seconds[terminatedidx])...)
+                episode += length(terminatedidx) 
+                push!(evalscores, evalscore)
 
 
-            wallclockelapsed = now() - trainstart
-            mean100evalscore = Statistics.mean(last(evalscores, 100))
-            push!(results, EpisodeResult(sum(episodetimestep), mean(last(episodereward, 100)), mean100evalscore))
+                wallclockelapsed = now() - trainstart
+                mean100evalscore = Statistics.mean(last(evalscores, 100))
+                push!(results, EpisodeResult(sum(episodetimestep), mean(last(episodereward, 100)), mean100evalscore))
 
-            @debug "Episode completed" terminatedidx episode evalscore evalscoresd mean100evalscore 
+                @debug "Episode completed" terminatedidx episode evalscore evalscoresd mean100evalscore 
 
-            reached_maxminutes = (wallclockelapsed.value / 60_000)  >= maxminutes * 60
-            reached_maxepisodes = episode + learner.nworkers >= maxepisodes
-            reached_goal_mean_reward = mean100evalscore >= goal_mean_reward 
-            trainingdone = reached_maxminutes || reached_maxepisodes || reached_goal_mean_reward 
+                reached_maxminutes = (wallclockelapsed.value / 60_000)  >= maxminutes * 60
+                reached_maxepisodes = episode + learner.nworkers >= maxepisodes
+                reached_goal_mean_reward = mean100evalscore >= goal_mean_reward 
+                trainingdone = reached_maxminutes || reached_maxepisodes || reached_goal_mean_reward 
 
-            running_timestep[terminatedidx] .= 0
-            running_reward[terminatedidx] .= 0.0
-            running_seconds[terminatedidx] .= now()
+                running_timestep[terminatedidx] .= 0
+                running_reward[terminatedidx] .= 0.0
+                running_seconds[terminatedidx] .= now()
+            end
+        catch e
+            rethrow()
         end
     end
 
     return results, evaluate(policymodel(learner), innerenv(learner.env); nepisodes = 100, usegpu)
 end
 
-function optimizemodel!(learner::A2CLearner, states, actions, rewards; usegpu = true) 
+function optimizemodel!(learner::A2CLearner{E}, states, actions, rewards; usegpu = true) where E <: AbstractAsyncEnv
     statesdata = @pipe map(t -> reduce(hcat, t), states) |> reduce(hcat, _) |> (usegpu ? Flux.gpu(_) : _) 
 
-    laststates = hcat(state(learner.env)...)
+    laststates = reduce(hcat, state(learner.env))
     failures = is_terminateds(learner.env) .&& .!istruncateds(learner.env)
 
     nextvalues = 𝒱(learner.model, usegpu ? Flux.gpu(laststates) : laststates) |> Flux.cpu 
     push!(rewards, ifelse.(failures, zeros(Float32, length(failures)), nextvalues))
+        
+    return train!(learner.model, statesdata, actions, rewards, learner.λ, opt(learner); 
+                  learner.γ, policylossweight = learner.policylossweight, valuelossweight = learner.valuelossweight, entropylossweight = learner.entropylossweight)
+end
+
+function optimizemodel!(learner::A2CLearner, states, actions, rewards; usegpu = true) 
+    statesdata = reduce(hcat, states)
+
+    laststates = state(learner.env)
+    failure = is_terminated(learner.env) && !istruncated(learner.env)
+
+    nextvalue = 𝒱(learner.model, usegpu ? Flux.gpu(laststates) : laststates) |> Flux.cpu 
+    push!(rewards, failure ? Float32(0.0) : only(nextvalue))
         
     return train!(learner.model, statesdata, actions, rewards, learner.λ, opt(learner); 
                   learner.γ, policylossweight = learner.policylossweight, valuelossweight = learner.valuelossweight, entropylossweight = learner.entropylossweight)

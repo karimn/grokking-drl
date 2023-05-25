@@ -27,14 +27,6 @@ end
 
 π(m::FCDAP, state) = m.model(state)
 
-function selectaction(m::FCDAP, state; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
-    p = π(m, usegpu ? Flux.gpu(state) : state) |> Flux.cpu
-
-    return rand.(rng, Distributions.Categorical.(copy(colp) for colp in eachcol(p)))
-end
-
-selectgreedyaction(m::FCDAP, state; usegpu = true) = argmax(π(m, usegpu ? Flux.gpu(state) : state))
-
 function train!(m::FCDAP, states, actions, rewards, opt; γ = 1.0)
     T = size(states, 2)
     discounts = γ.^range(0, T - 1)
@@ -45,8 +37,6 @@ function train!(m::FCDAP, states, actions, rewards, opt; γ = 1.0)
             log.(_) |> 
             Flux.cpu |> 
             [collpdf[colact] for (collpdf, colact) in zip(eachcol(_), a)] 
-            #Distributions.Categorical.(_) |> 
-            #@inbounds Distributions.logpdf.(_, actions)
 
         - mean(d .* r .* lpdf)
     end
@@ -54,25 +44,4 @@ function train!(m::FCDAP, states, actions, rewards, opt; γ = 1.0)
     !isfinite(val) && @warn "loss is $val"
 
     Flux.update!(opt, m, grads[1])
-end
-
-function evaluate(m::M, env::AbstractEnv; nepisodes = 1, greedy = true, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where M <: Union{AbstractPolicyModel, AbstractActorCriticModel}
-    rs = []
-
-    env = deepcopy(env)
-
-    for _ in 1:nepisodes
-        reset!(env)
-        s, d = state(env), false
-        push!(rs, 0)
-
-        while !d 
-            a = greedy ? selectgreedyaction(m, s; usegpu) : selectaction(m, s; rng, usegpu)
-            env(only(a))
-            s, r, d = state(env), reward(env), is_terminated(env)
-            rs[end] += r
-        end
-    end
-
-    return mean(rs), std(rs)
 end

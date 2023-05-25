@@ -12,9 +12,9 @@ end
 
 function A3CLearner{DoubleNetworkActorCriticModel{PM, VM}}(env::E, modelargs...; max_nsteps, nworkers, β, γ = Float32(1.0), epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, PM, VM}
     nS, nA = spacedim(env), nactions(env)
-    model = M{PM, VM}(nS, nA, modelargs...; usegpu)
+    model = DoubleNetworkActorCriticModel{PM, VM}(nS, nA, modelargs...; usegpu)
 
-    return A3CLearner{E, M}(model, nothing, epochs, env, γ, β, nothing, max_nsteps, nworkers)
+    return A3CLearner{E, DoubleNetworkActorCriticModel{PM, VM}}(model, nothing, epochs, env, γ, β, nothing, max_nsteps, nworkers)
 end
 
 function GAELearner(::Type{M}, env::E, hiddendims::Vector{Int}, modelopt::Flux.Optimise.AbstractOptimiser; 
@@ -69,41 +69,39 @@ function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, goal_mea
 
             nstepstart, total_episode_steps, step = 0, 0, 0
 
-            states, actions, rewards = [], [], []
+            states, actions, rewards = [], Int[], Float32[]
 
-            #try
-                while !isterminal 
-                    step += 1
+            while !isterminal 
+                step += 1
 
-                    push!(states, copy(currstate))
+                push!(states, copy(currstate))
 
-                    action, newstate, curr_reward, isterminal, _ = step!(learner, currstate; policymodel = localmodel, env = localenv, rng, usegpu) 
+                action, newstate, curr_reward, isterminal, _ = step!(learner, currstate; policymodel = localmodel, env = localenv, rng, usegpu) 
 
-                    push!(actions, only(action))
-                    push!(rewards, curr_reward)
+                push!(actions, only(action))
+                push!(rewards, curr_reward)
 
-                    episodereward[workerid][end] += curr_reward 
-                    episodetimestep[workerid][end] += 1
-                    episodeexploration[workerid][end] += 1
+                episodereward[workerid][end] += curr_reward 
+                episodetimestep[workerid][end] += 1
+                episodeexploration[workerid][end] += 1
 
-                    currstate = newstate
+                currstate = newstate
 
-                    if isterminal || (step - nstepstart >= learner.max_nsteps)
-                        # isterminal && @debug "Terminal state reached." workerid episode = nepisodes[] steps=step 
-                        # isterminal || @debug "Max steps reached." workerid episode = nepisodes[] steps=step 
+                if isterminal || (step - nstepstart >= learner.max_nsteps)
+                    # isterminal && @debug "Terminal state reached." workerid episode = nepisodes[] steps=step 
+                    # isterminal || @debug "Max steps reached." workerid episode = nepisodes[] steps=step 
 
-                        if length(actions) > 1 
-                            localmodel = optimizemodel!(learner, localmodel, localenv, states, actions, rewards; usegpu)
-                        end
-
-                        states, actions, rewards = [], [], []
-
-                        nstepstart = step
+                    if length(actions) > 1 
+                        localmodel = optimizemodel!(learner, localmodel, localenv, states, actions, rewards; usegpu)
                     end
+
+                    empty!(states)
+                    empty!(actions)
+                    empty!(rewards)
+
+                    nstepstart = step
                 end
-            #=catch e
-                throw(WorkerException(workerid, learner.model, localmodel, e))
-            end=#
+            end
 
             atomic_add!(nepisodes, 1)
 
@@ -141,10 +139,14 @@ function optimizemodel!(learner::A3CLearner, localmodel::M, env::AbstractEnv, st
     nextvalue = 𝒱(localmodel, usegpu ? Flux.gpu(laststate) : laststate) |> Flux.cpu |> first
     push!(rewards, failure ? 0.0 : nextvalue)
         
-    grads = train!(localmodel, statesdata, actions, rewards, learner.λ, learner.modelopt; γ = learner.γ, entropylossweight = learner.β, updatemodel = true)
+    grads = Flux.withgradient(localmodel, statesdata, actions, rewards, learner.λ; γ = learner.γ, entropylossweight = learner.β)
 
-    # Asynchronous: Hog Wild!
-    Flux.update!(learner.modelopt, learner.model, grads[1])
+    try
+        # Asynchronous: Hog Wild!
+        Flux.update!(learner.modelopt, learner.model, grads[1])
+    catch e
+        throw(GradientException(learner.model, statesdata, actions, nothing, e, nothing, 1, length(rewards), (learner.λ * learner.γ).^range(0, length(rewards) - 1), grads))
+    end
 
     return deepcopy(learner.model)   
 end

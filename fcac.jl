@@ -16,7 +16,7 @@ function FCAC(inputdims::Int, outputdims::Int, hiddendims::Vector{Int} = [32, 32
     modelchain = Flux.Chain(
         Flux.Dense(inputdims => hiddendims[1], actfn), 
         hiddenlayers..., 
-        Flux.Parallel(
+         Flux.Parallel(
             vcat,
             Flux.Chain(Flux.Dense(hiddendims[end] => outputdims), Flux.softmax),
             Flux.Dense(hiddendims[end] => 1)
@@ -35,22 +35,6 @@ end
 π(m::FCAC, state) = m(state)[1:(end - 1), :]
 ℒᵥ(m::FCAC, v̂, v) = m.lossfn(v̂, v)
 
-function selectaction(m::FCAC, state; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
-    p = π(m, usegpu ? Flux.gpu(state) : state) |> Flux.cpu 
-
-    try
-        return rand.(rng, Distributions.Categorical.(copy(colp) for colp in eachcol(p)))
-    catch e
-        throw(NaNParamException(m, state))
-    end
-end
-
-function selectgreedyaction(m::FCAC, state; usegpu = true) 
-    p = π(m, usegpu ? Flux.gpu(state) : state) |> Flux.cpu
-
-    return vec(getindex.(argmax(p, dims = 1), 1))
-end
-
 function ℒ(m::FCAC, states, actions, returns, rewards, discounts, λ_discounts; N, T, γ, valuelossweight = 1.0, policylossweight = 1.0, entropylossweight = 1.0)
     output = m(states) |> Flux.cpu
     values = output[end, :]
@@ -58,20 +42,25 @@ function ℒ(m::FCAC, states, actions, returns, rewards, discounts, λ_discounts
 
     valueloss = ℒᵥ(m, values, returns[1:(end - N)])
 
-    values = vcat(values, rewards[(end - N + 1):end])
-    advs = reshape(rewards[1:(end - N)] + γ * values[(N + 1):end] - values[1:(end - N)], N, :)
-    gaes = reduce(hcat, sum(λ_discounts[1:(T - t)]' .* advs[:, t:end], dims = 2) for t in 1:(T - 1)) 
-    discounted_gaes = discounts' .* gaes 
+    discounted_gaes = nothing
 
-    entropyloss = - mean(Distributions.entropy(coldist) for coldist in eachcol(pdist))
+    Flux.ignore_derivatives() do 
+        values = vcat(values, rewards[(end - N + 1):end])
+        _, gaes = calcgaes(values, rewards, λ_discounts; N, γ)
+        discounted_gaes = discounts' .* gaes 
+    end
 
-    lpdf = reshape([log(coldist[colact]) for (coldist, colact) in zip(eachcol(pdist), actions)], N, :)
+    catdist = Distributions.Categorical.(copy(p) for p in eachcol(pdist))
+
+    entropyloss = - mean(Distributions.entropy.(catdist))
+
+    lpdf = reshape(Distributions.logpdf.(catdist, actions), N, :)
     policyloss = - sum(lpdf .* discounted_gaes) / (N * (T - 1))
 
     return valuelossweight * valueloss + entropylossweight * entropyloss + policylossweight * policyloss 
 end
 
-function train!(m::FCAC, states, actions, rewards, λ, opt; γ, policylossweight = 1.0, valuelossweight = 1.0, entropylossweight = 1.0, updatemodel = true) 
+function Flux.withgradient(m::FCAC, states, actions, rewards, λ, opt; γ = 1.0, policylossweight = 1.0, valuelossweight = 1.0, entropylossweight = 1.0) 
     T = length(rewards)
     discounts = γ.^range(0, T - 1)
     λ_discounts = (λ * γ).^range(0, T - 1) 
@@ -81,19 +70,35 @@ function train!(m::FCAC, states, actions, rewards, λ, opt; γ, policylossweight
 
     N = m.nworkers  
 
-    actions = reduce(vcat, actions)
-    returns = reduce(vcat, returns)
-    rewards = reduce(vcat, rewards)
+    flatactions = reduce(vcat, actions)
+    flatreturns = reduce(vcat, returns)
+    flatrewards = reduce(vcat, rewards)
     
-    @assert size(states, 2) == length(actions) > 0 
+    @assert size(states, 2) == length(flatactions) > 0 
 
-    val, grads = Flux.withgradient(m -> ℒ(m, states, actions, returns, rewards, discounts, λ_discounts; N, T, γ, policylossweight, valuelossweight, entropylossweight), m)
+    val, grads = NaN, nothing
+
+    try
+        val, grads = Flux.withgradient(m -> ℒ(m, states, flatactions, flatreturns, flatrewards, discounts, λ_discounts; N, T, γ, policylossweight, valuelossweight, entropylossweight), m)
+    catch e
+        throw(GradientException(m, states, actions, returns, e, nothing, N, T, λ_discounts, nothing))
+    end
 
     if !isfinite(val) 
         @warn "Value + policy + entropy loss is $val"
     end
 
-    updatemodel && Flux.update!(opt, m, grads[1])
+    return val, grads
+end
+
+function train!(m::FCAC, states, actions, rewards, λ, opt; γ = 1.0, policylossweight = 1.0, valuelossweight = 1.0, entropylossweight = 1.0, updatemodel = true) 
+    _, grads = Flux.withgradient(m, states, actions, rewards, λ, opt; γ, policylossweight, valuelossweight, entropylossweight)
+
+    try
+        updatemodel && Flux.update!(opt, m, grads[1])
+    catch e
+        throw(GradientException(m, states, actions, nothing, e, nothing, m.nworkers, length(rewards), (λ * γ).^range(0, length(rewards) - 1), grads))
+    end
 
     return grads
 end

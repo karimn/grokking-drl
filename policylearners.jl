@@ -5,8 +5,8 @@ function optimizemodel!(learner::L, states, actions, rewards; usegpu = true) whe
 end
 
 function step!(learner::L, currstate; policymodel = policymodel(learner), env = environment(learner), rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractPolicyLearner
-    action = selectaction(policymodel, currstate; rng, usegpu)
-    env(only(action))
+    action = selectaction(policymodel, currstate; rng, usegpu) |> only
+    env(action)
     newstate = Flux.cpu(state(env))
 
     return action, newstate, reward(env), is_terminated(env), istruncated(env)
@@ -25,8 +25,8 @@ function train!(learner::L; maxminutes::Int, maxepisodes::Int, goal_mean_reward,
         episodestart, trainingtime = now(), 0
 
         states = []
-        actions = []
-        rewards = []
+        actions = Int[]
+        rewards = Float32[]
 
         reset!(learner.env)
 

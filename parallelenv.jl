@@ -1,5 +1,6 @@
 struct ParallelEnv{E <: AbstractEnv} <: AbstractAsyncEnv 
     env::E
+    parallelenvs::Vector{E}
     nworkers::Int
     inchannels::Vector{Channel}
     cmdchannels::Vector{Channel}
@@ -13,17 +14,18 @@ end
 function ParallelEnv(e::E, nworkers::Int) where E <: AbstractEnv
     inchannels = [Channel(2) for _ in 1:nworkers]
     cmdchannels = [Channel(1) for _ in 1:nworkers]
-    channels = zip(inchannels, cmdchannels)
-    workers = [@task envworker(wid, deepcopy(e), input = outch, output = inch) for (wid, (inch, outch)) in enumerate(channels)]
+    parallelenvs = [deepcopy(e) for _ in 1:nworkers]
+    envs_and_channels = zip(parallelenvs, inchannels, cmdchannels)
+    workers = [@task envworker(wid, localenv, input = outch, output = inch) for (wid, (localenv, inch, outch)) in enumerate(envs_and_channels)]
 
-    for (worker, (inch, outch)) in zip(workers, channels)
+    for (worker, (_, inch, outch)) in zip(workers, envs_and_channels)
         bind(inch, worker)
         bind(outch, worker)
     end
 
     schedule.(workers)
 
-    newenv = ParallelEnv{E}(e, nworkers, inchannels, cmdchannels, workers, falses(nworkers), falses(nworkers), Vector(undef, nworkers) , Vector{Float32}(undef, nworkers))
+    newenv = ParallelEnv{E}(e, parallelenvs, nworkers, inchannels, cmdchannels, workers, falses(nworkers), falses(nworkers), Vector(undef, nworkers) , Vector{Float32}(undef, nworkers))
 
     reset!(newenv)
 
@@ -53,8 +55,8 @@ function envworker(wid::Int, localenv::E; input::Channel, output::Channel) where
             localenv(a)
         elseif cmd == :query
             put!(output, localenv) 
-        elseif cmd == :pastlimit
-            put!(output, false)
+        # elseif cmd == :pastlimit
+        #     put!(output, false)
         else
             exit = true
         end
