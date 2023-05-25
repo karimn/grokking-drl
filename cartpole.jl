@@ -45,6 +45,14 @@ RLEnvs.reward(e::CartPoleEnv) = RLEnvs.reward(e.innerenv)
 RLEnvs.state_space(e::CartPoleEnv) = RLEnvs.state_space(e.innerenv)
 RLEnvs.action_space(e::CartPoleEnv) = RLEnvs.action_space(e.innerenv)
 
+innerenv(e::CartPoleEnv) = e
+is_terminateds(e::CartPoleEnv) = [is_terminated(e)]
+istruncateds(e::CartPoleEnv) = [istruncated(e)]
+function RLEnvs.reset!(e::CartPoleEnv, id::Array{Int, 1}) 
+    @assert id[1] == 1 
+    reset!(e)
+end
+
 function RLEnvs.reset!(e::CartPoleEnv) 
     e.currstep = 0
     RLEnvs.reset!(e.innerenv)

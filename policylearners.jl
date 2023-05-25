@@ -1,55 +1,48 @@
-struct REINFORCELearner{E, M} <: AbstractPolicyLearner where {E <: AbstractEnv, M <: AbstractPolicyModel}
-    policymodel::M
-    epochs::Int
-    env::E
+function optimizemodel!(learner::L, states, actions, rewards; usegpu = true) where L <: AbstractPolicyLearner
+    @pipe hcat(states...) |> 
+        (usegpu ? Flux.gpu(_) : _) |> 
+        train!(policymodel(learner), _, actions, rewards, opt(learner); γ = learner.γ)
 end
 
-function REINFORCELearner{M}(env::E, hiddendims::Vector{Int}, opt::Flux.Optimise.AbstractOptimiser; epochs::Int = 1, usegpu = true) where {E <: AbstractEnv, M <: AbstractPolicyModel}
-    nS, nA = spacedim(env), nactions(env)
-    policymodel = M(nS, nA, opt; hiddendims, usegpu)
+function step!(learner::L, currstate; policymodel = policymodel(learner), env = environment(learner), rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractPolicyLearner
+    action = selectaction(policymodel, currstate; rng, usegpu) |> only
+    env(action)
+    newstate = Flux.cpu(state(env))
 
-    return REINFORCELearner{E, M}(policymodel, epochs, env)
+    return action, newstate, reward(env), is_terminated(env), istruncated(env)
 end
 
-function optimizemodel!(learner::L, states, actions, rewards, γ; usegpu = true) where L <: AbstractPolicyLearner
-    train!(learner.policymodel, usegpu ? Flux.gpu(states) : states, actions, rewards, γ)
-end
-
-function step!(learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractPolicyLearner
-    action = selectaction(learner.policymodel, usegpu ? Flux.gpu(currstate) : currstate)
-    learner.env(action)
-    newstate = Flux.cpu(state(learner.env))
-
-    return action, newstate, reward(learner.env), is_terminated(learner.env)
-end
-
-function train!(learner::L, γ::Float64, maxminutes::Int, maxepisodes::Int; rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractPolicyLearner}
+function train!(learner::L; maxminutes::Int, maxepisodes::Int, goal_mean_reward, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where {L <: AbstractPolicyLearner}
     evalscores = []
-    episodereward = Float64[]
+    episodereward = Float32[]
     episodetimestep = Int[]
     episodeexploration = Int[]
     results = EpisodeResult[]
 
+    trainstart = now()
+
     for ep in 1:maxepisodes
+        episodestart, trainingtime = now(), 0
+
         states = []
-        actions = []
-        rewards = []
+        actions = Int[]
+        rewards = Float32[]
 
         reset!(learner.env)
 
-        currstate, isterminal = Vector{Float32}(state(learner.env)), is_terminated(learner.env)
+        currstate, isterminal = state(learner.env), is_terminated(learner.env)
         push!(episodereward, 0)
         push!(episodetimestep, 0)
         push!(episodeexploration, 0)
 
         step = 0
 
-        while true
+        while !isterminal 
             step += 1
 
-            push!(states, currstate)
+            push!(states, copy(currstate))
 
-            action, newstate, curr_reward, isterminal = step!(learner, currstate; rng, usegpu) 
+            action, newstate, curr_reward, isterminal, _ = step!(learner, currstate; rng, usegpu) 
 
             push!(actions, action)
             push!(rewards, curr_reward)
@@ -59,17 +52,40 @@ function train!(learner::L, γ::Float64, maxminutes::Int, maxepisodes::Int; rng:
             episodeexploration[end] += 1
 
             currstate = newstate
-
-            isterminal && break
         end
 
-        optimizemodel!(learner, states, actions, rewards, γ; usegpu)
+        optimizemodel!(learner, states, actions, rewards; usegpu)
 
-        evalscore, _ = evaluate(learner.policymodel, env; usegpu)
-        push!(evalscores, evalscore)     
+        episode_elapsed = now() - episodestart
+        trainingtime += episode_elapsed.value
 
-        push!(results, EpisodeResult(sum(episodetimestep), Statistics.mean(last(episodereward, 100)), Statistics.mean(last(evalscores, 100))))
+        evalscore, evalscoresd = evaluate(policymodel(learner), learner.env; usegpu)
+        push!(evalscores, evalscore)    
+        
+        mean100evalscores = mean(last(evalscores, 100))
+
+        push!(results, EpisodeResult(sum(episodetimestep), mean(last(episodereward, 100)), mean100evalscores))
+
+        @debug "Episode completed" episode = ep steps=step evalscore evalscoresd mean100evalscores 
+
+        wallclockelapsed = now() - trainstart
+        maxtimereached = (wallclockelapsed.value / 60_000) >= maxminutes 
+        rewardgoalreached = mean100evalscores >= goal_mean_reward
+
+        if maxtimereached 
+            @info "Maximum training time reached." 
+            break
+        end
+
+        if rewardgoalreached
+            @info "Reached goal mean reward" goal_mean_reward
+            break
+        end
     end
 
-    return results, evaluate(learner.policymodel, env; nepisodes = 100, usegpu)
+    return results, evaluate(policymodel(learner), env; nepisodes = 100, usegpu)
+end
+
+function optimizemodel!(learner::L, states, actions, rewards; usegpu = true) where L <: AbstractActorCriticLearner 
+    optimizemodel!(model(learner), environment(learner), states, actions, rewards; γ = discount(learner), β = entropylossweight(learner), usegpu)
 end

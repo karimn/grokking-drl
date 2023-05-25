@@ -5,7 +5,7 @@ struct FCQ <: AbstractValueModel
     lossfn
 end
 
-function CreateSimpleFCModel(::Type{M}, inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int}, actfn, lossfn, usegpu) where M <: AbstractModel
+function CreateSimpleFCModel(::Type{M}, inputdim::Int, outputdim::Int, opt::Union{Nothing, Flux.Optimise.AbstractOptimiser} = nothing; hiddendims::Vector{Int}, actfn, lossfn, usegpu) where M <: AbstractModel
     hiddenlayers = Vector{Any}(nothing, length(hiddendims) - 1)
 
     for i in 1:(length(hiddendims) - 1)
@@ -15,26 +15,29 @@ function CreateSimpleFCModel(::Type{M}, inputdim::Int, outputdim::Int, valueopt:
     modelchain = Flux.Chain(
         Flux.Dense(inputdim => hiddendims[1], actfn), 
         hiddenlayers..., 
-        Flux.Dense(hiddendims[end] => outputdim))
+        Flux.Dense(hiddendims[end] => outputdim)
+    )
         
     if usegpu
         modelchain = modelchain |> Flux.gpu
     end
 
-    opt = Flux.setup(valueopt, modelchain)
+    if opt ≢ nothing
+        opt = Flux.setup(opt, modelchain)
 
-    return M(modelchain, opt, lossfn)
+        return M(modelchain, opt, lossfn)
+    else
+        return M(modelchain, lossfn)
+    end
 end
 
-function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, w) -> Flux.mse(ŷ, y), usegpu = true)
+function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, args...) -> Flux.mse(ŷ, y), usegpu = true)
     return CreateSimpleFCModel(FCQ, inputdim, outputdim, valueopt; hiddendims, actfn, lossfn, usegpu)
 end
 
 (m::FCQ)(state) = m.model(state) 
 
 function train!(m::M, data, actions, weights) where M <: AbstractValueModel 
-    #Flux.train!(loss, m.model, data, m.opt) 
-    
     input, label = data 
     local tderrors
 
@@ -80,6 +83,8 @@ function optimizemodel!(onlinemodel::M, experiences::B, epochs, γ; targetmodel:
             update!(experiences, idxs, _)
     end
 end
+
+opt(m::FCQ) = m.opt
 
 function save(m::M, filename) where M <: AbstractValueModel
     model = m.model |> Flux.cpu
