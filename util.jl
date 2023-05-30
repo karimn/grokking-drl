@@ -4,7 +4,8 @@ struct EpisodeResult
     mean100evalscore
 end
 
-function update!(to::Flux.Chain, from::Flux.Chain; τ = 1.0)
+# All implementation of AbstractModel should have a @functor declaration
+function update_target_model!(to::M, from::M; τ = 1.0) where {M <: AbstractModel} # = update!(to.model, from.model; τ)
     if τ > 0.0
         newparams = [(1 - τ) * toparam + τ * fromparam for (toparam, fromparam) in zip(Flux.params(to), Flux.params(from))]
         Flux.loadparams!(to, newparams)

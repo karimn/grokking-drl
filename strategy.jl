@@ -1,4 +1,4 @@
-struct εGreedyStrategy <: AbstractStrategy
+struct εGreedyStrategy <: AbstractDiscreteStrategy
     ε::Float16
 end
 
@@ -9,7 +9,7 @@ function selectaction!(strategy::S, m::AbstractValueModel, state; rng::AbstractR
     return retvals
 end
 
-function selectaction(strategy::S, m::AbstractValueModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+function selectaction(strategy::S, m::AbstractValueModel, state; rng::AbstractRNG = GLOBAL_RNG, usegpu = true) where S <: AbstractDiscreteStrategy
     qvalues = @pipe Vector{Float32}(state) |> m(usegpu ? Flux.gpu(_) : _)
     qvalues = usegpu ? Flux.cpu(qvalues) : qvalues
     explored = false
@@ -24,7 +24,7 @@ function selectaction(strategy::S, m::AbstractValueModel, state; rng::AbstractRN
     return action, explored
 end
 
-function evaluate(strategy::S, m::AbstractValueModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where S <: AbstractStrategy
+function evaluate(strategy::AbstractStrategy, m::AbstractModel, env::AbstractEnv; nepisodes = 1, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
     rs = []
     steps = []
 
@@ -38,21 +38,21 @@ function evaluate(strategy::S, m::AbstractValueModel, env::AbstractEnv; nepisode
 
         while !d 
             steps[end] += 1
-            a, _ = selectaction(strategy, m, s, rng = rng, usegpu = usegpu)
+            a, _ = selectaction!(strategy, m, s, rng = rng, usegpu = usegpu)
             env(a)
             s, r, d = state(env), reward(env), is_terminated(env)
             rs[end] += r
         end
     end
 
-    return Statistics.mean(rs), Statistics.std(rs), Statistics.mean(steps)
+    return mean(rs), std(rs), mean(steps)
 end
 
 decay!(s::εGreedyStrategy) = s.ε
 
 GreedyStrategy() = εGreedyStrategy(0.0)
 
-mutable struct εGreedyLinearStrategy <: AbstractStrategy
+mutable struct εGreedyLinearStrategy <: AbstractDiscreteStrategy
     ε::Float16
     min_ε::Float16
     decaysteps::Int
@@ -70,7 +70,7 @@ function decay!(strategy::εGreedyLinearStrategy)
     return strategy.ε
 end 
 
-mutable struct εGreedyExpStrategy <: AbstractStrategy
+mutable struct εGreedyExpStrategy <: AbstractDiscreteStrategy
     ε::Float16
     min_ε::Float16
     decaysteps::Int
@@ -90,3 +90,52 @@ function decay!(strategy::εGreedyExpStrategy)
 
     return strategy.ε
 end 
+
+struct ContinuousGreedyStrategy <: AbstractContinuousStrategy 
+    low::Float32
+    high::Float32
+end
+
+ContinuousGreedyStrategy() = ContinuousGreedyStrategy(-1.0, 1.0) 
+function ContinuousGreedyStrategy(env::AbstractEnv)
+    low, high = @pipe action_space(env) |> (minimum(_), maximum(_))
+
+    ContinuousGreedyStrategy(low, high)
+end
+
+function selectaction!(s::ContinuousGreedyStrategy, m::AbstractModel, state; rng::Random.AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
+    greedyact = π(m, usegpu ? Flux.gpu(state) : state) |> Flux.cpu |> only
+
+    #=return mapslices(greedyact; dims = 1) do slice
+        clamp.(slice, s.low, s.high)
+    end=#
+    
+    return clamp(greedyact, s.low, s.high), false
+end
+
+mutable struct NormalNoiseGreedyStrategy <: AbstractContinuousStrategy
+    low::Float32
+    high::Float32
+    exploration_noise_ratio::Float32
+    ratio_noise_injected::Float32
+
+    NormalNoiseGreedyStrategy(low, high, exploration_noise_ratio = 0.1) = new(low, high, exploration_noise_ratio, 0.0)
+    NormalNoiseGreedyStrategy(exploration_noise_ratio = 0.1) = new(-1.0, 1.0, exploration_noise_ratio, 0.0)
+
+    function NormalNoiseGreedyStrategy(env::AbstractEnv, exploration_noise_ratio = 0.1) 
+        low, high = @pipe action_space(env) |> (minimum(_), maximum(_))
+
+        new(low, high, exploration_noise_ratio, 0.0)
+    end
+end
+
+function selectaction!(s::NormalNoiseGreedyStrategy, m::AbstractModel, state; maxexploration = false, rng::Random.AbstractRNG = Random.GLOBAL_RNG, usegpu = true)
+    noisescale = maxexploration ? s.high : s.exploration_noise_ratio * s.high
+
+    greedyact = π(m, usegpu ? Flux.gpu(state) : state) |> Flux.cpu |> only 
+    action::Float32 = @pipe greedyact + rand(rng, Distributions.Normal(0, noisescale)) |> clamp(_, s.low, s.high)
+
+    s.ratio_noise_injected = mean(abs(greedyact - action) / (s.high - s.low))
+
+    return action, true
+end

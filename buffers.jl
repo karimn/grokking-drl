@@ -9,11 +9,11 @@ Buffer{MS}() where MS = Buffer{MS}(1, 0, DataFrame())
 update!(::B, ::Vector{Int}, ::Vector{Float32}) where {B <: AbstractBuffer} = nothing
 
 function store!(b::Buffer{MS}, s) where MS
-    if b.currsize < MS 
-        push!(b.buffer, s)
-    else
-        b.buffer = DataFrame(;s...) # Let's clear out all the old experiences
+    if b.currsize >= MS 
+        b.buffer = DataFrame() # Let's clear out all the old experiences
     end
+
+    push!(b.buffer, s)
 
     b.idx += 1
     b.currsize += 1 
@@ -38,7 +38,7 @@ function store!(b::ReplayBuffer{MS, BS}, s) where {MS, BS}
     if b.currsize < MS 
         push!(b.buffer, s)
     else
-        b.buffer[b.idx, :] = s
+        b.buffer[b.idx, :] = s 
     end
 
     b.idx = (b.idx % MS) + 1
@@ -71,7 +71,7 @@ function store!(b::PrioritizedReplayBuffer{MS, BS}, s) where {MS, BS}
     if b.currsize < MS 
         push!(b.buffer, s)
     else
-        b.buffer[b.idx, :] = s
+        b.buffer[b.idx, :] = s 
     end
 
     b.idx = (b.idx % MS) + 1

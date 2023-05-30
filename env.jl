@@ -60,9 +60,48 @@ end
 
 function (e::CartPoleEnv)(action) 
     e.currstep += 1
-    e.innerenv(action)
+    act!(e.innerenv, action)
 end
 
 istruncated(e::CartPoleEnv) = e.currstep > e.max_steps
 nactions(::CartPoleEnv) = 2
 spacedim(::CartPoleEnv) = 4 
+
+mutable struct PendulumEnv <: RLEnvs.AbstractEnv
+    innerenv::Union{RLEnvs.PendulumEnv, RLEnvs.ActionTransformedEnv}
+    max_steps::Int
+    currstep::Int
+
+    PendulumEnv(; max_steps = 200, kwargs...) = new(RLEnvs.PendulumEnv(;max_steps, kwargs...), max_steps, 0)
+
+    function PendulumEnv(nnactbounds; max_steps = 200, kwargs...) 
+        innerpendenv = RLEnvs.PendulumEnv(; max_steps, kwargs...)
+        actspace = action_space(innerpendenv)
+
+        new(RLEnvs.ActionTransformedEnv(RLEnvs.PendulumEnv(;max_steps, kwargs...); 
+                                        action_mapping = a -> ((a - nnactbounds[1]) * (actspace.right - actspace.left) / (nnactbounds[2] - nnactbounds[1])) + actspace.left), 
+            max_steps, 0)
+    end
+end
+
+RLEnvs.state(e::PendulumEnv) = RLEnvs.state(e.innerenv)
+RLEnvs.is_terminated(e::PendulumEnv) = RLEnvs.is_terminated(e.innerenv)
+RLEnvs.reward(e::PendulumEnv) = RLEnvs.reward(e.innerenv)
+RLEnvs.state_space(e::PendulumEnv) = RLEnvs.state_space(e.innerenv)
+RLEnvs.action_space(e::PendulumEnv) = RLEnvs.action_space(e.innerenv)
+
+innerenv(e::PendulumEnv) = e
+
+function RLEnvs.reset!(e::PendulumEnv) 
+    e.currstep = 0
+    RLEnvs.reset!(e.innerenv)
+end
+
+function (e::PendulumEnv)(action) 
+    e.currstep += 1
+    act!(e.innerenv, action)
+end
+
+istruncated(e::PendulumEnv) = e.currstep > e.max_steps
+nactions(::PendulumEnv) = 1
+spacedim(::PendulumEnv) = 3 
