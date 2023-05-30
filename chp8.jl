@@ -7,7 +7,7 @@ using StatsBase: sample
 using DataFrames
 using BSON
 
-include("cartpole.jl")
+include("env.jl")
 include("abstract.jl")
 include("strategy.jl")
 include("buffers.jl")
