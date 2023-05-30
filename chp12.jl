@@ -23,16 +23,43 @@ include("strategy.jl")
 include("valuelearners.jl")
 include("ddpg.jl")
 
+const numlearners = 5
 const usegpu = true 
 const maxminutes = 20
 const maxepisodes = 500 
-const goal_mean_reward = -150.0 
+const goal_mean_reward = -150.0
+const γ::Float32 = 0.99 
 
 env = PendulumEnv((-1, 1), max_steps = 200, T = Float32)
 
-logger = Logging.SimpleLogger(stdout, Logging.Debug)
-oldlogger = Logging.global_logger(logger)
+# logger = Logging.SimpleLogger(stdout, Logging.Debug)
+# oldlogger = Logging.global_logger(logger)
 
-learner = DDPGLearner(env, [256, 256], [256, 256], Flux.Adam(0.0003), Flux.Adam(0.0003); updatemodelsteps = 1, τ = 0.005, usegpu) 
-buffer = ReplayBuffer{100_000, 256}()
-results, (evalscore, _) = train!(learner, NormalNoiseGreedyStrategy(), ContinuousGreedyStrategy(), buffer; maxminutes, maxepisodes, goal_mean_reward, usegpu) 
+# DDPG
+
+bestscore = 0
+bestagent = nothing
+dqnresults = []
+
+prog = Progress(numlearners)
+
+ex = nothing
+
+for _ in 1:numlearners
+    learner = DDPGLearner(env, [256, 256], [256, 256], Flux.Adam(0.0003), Flux.Adam(0.0003); updatemodelsteps = 1, τ = 0.005, usegpu) 
+    buffer = ReplayBuffer{100_000, 256}()
+    results, (evalscore, _) = train!(learner, NormalNoiseGreedyStrategy(), ContinuousGreedyStrategy(), buffer; γ, maxminutes, maxepisodes, goal_mean_reward, usegpu) 
+
+    push!(dqnresults, results)
+
+    @info "Learning completed." evalscore
+
+    if evalscore >= bestscore
+        global bestscore = evalscore
+        global bestagent = learner 
+    end
+
+    next!(prog)
+end
+
+finish!(prog)
