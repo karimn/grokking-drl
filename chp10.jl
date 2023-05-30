@@ -12,7 +12,7 @@ using DataFrames
 
 include("util.jl")
 include("abstract.jl")
-include("cartpole.jl")
+include("env.jl")
 include("strategy.jl")
 include("buffers.jl")
 include("fcq.jl")

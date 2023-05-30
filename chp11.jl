@@ -14,7 +14,7 @@ using Base: put!, take!
 
 include("abstract.jl")
 include("util.jl")
-include("cartpole.jl")
+include("env.jl")
 include("parallelenv.jl")
 include("policymodel.jl")
 include("fcq.jl")
@@ -22,10 +22,10 @@ include("fcdap.jl")
 include("fcv.jl")
 include("fcac.jl")
 include("doublenetworkac.jl")
-include("policylearners.jl")
-include("reinforce.jl")
 include("vpg.jl")
 include("a3c.jl")
+include("policylearners.jl")
+include("reinforce.jl")
 include("a2c.jl")
 
 const usegpu = true 
@@ -43,7 +43,7 @@ parenv = ParallelEnv(env, nworkers)
 #io = open("log.txt", "w")
 logger = Logging.SimpleLogger(stdout, Logging.Debug)
 #logger = Logging.SimpleLogger(io, Logging.Debug)
-#oldlogger = Logging.global_logger(logger)
+oldlogger = Logging.global_logger(logger)
 
 # Logging.with_logger(logger) do
 # end

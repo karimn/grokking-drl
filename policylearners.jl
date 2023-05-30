@@ -89,3 +89,61 @@ end
 function optimizemodel!(learner::L, states, actions, rewards; usegpu = true) where L <: AbstractActorCriticLearner 
     optimizemodel!(model(learner), environment(learner), states, actions, rewards; γ = discount(learner), β = entropylossweight(learner), usegpu)
 end
+
+function optimizemodel!(learner::Union{A3CLearner, VPGLearner}, states, actions, rewards, env::AbstractEnv = learner.env, localmodel::DoubleNetworkActorCriticModel = learner.model; λ = nothing, usegpu = true) 
+    statesdata = @pipe hcat(states...) |> 
+        (usegpu ? Flux.gpu(_) : _)
+
+    laststate = state(env)
+    failure = is_terminated(env) && !istruncated(env)
+
+    nextvalue = 𝒱(localmodel, usegpu ? Flux.gpu(laststate) : laststate) |> Flux.cpu |> first
+    push!(rewards, failure ? 0.0 : nextvalue)
+        
+    T = length(rewards) 
+    discounts = learner.γ.^range(0, T - 1)
+    returns = [sum(discounts[1:(T - t + 1)] .* rewards[t:end]) for t in 1:T] 
+
+    values = nothing 
+
+    vval, vgrads = Flux.withgradient(learner.model, statesdata, returns) do valuemodel, s, r
+        values = 𝒱(valuemodel, s) |> Flux.cpu |> vec 
+
+        return ℒᵥ(valuemodel, values, r[1:(end - 1)])
+    end
+
+    isfinite(vval) || @warn "Value loss is $vval"
+
+    if λ ≡ nothing
+        pop!(returns)
+
+        Ψ = returns - values
+    else
+        push!(values, last(rewards))
+
+        λ_discounts = (λ * learner.γ).^range(0, T - 1) 
+
+        advs = rewards[1:(end - 1)] + learner.γ * values[2:end] - values[1:(end - 1)]
+        Ψ = [sum(λ_discounts[1:(T - t)] .* advs[t:end]) for t in 1:(T - 1)] 
+    end
+
+    pop!(discounts)
+
+    pval, pgrads = Flux.withgradient(learner.model, statesdata, actions, discounts, Ψ) do policymodel, s, a, d, Ψ 
+        pdist = π(policymodel, s) |> Flux.cpu 
+        ent_lpdf = reduce(hcat, [Distributions.entropy(coldist), log(coldist[colact])] for (coldist, colact) in zip(eachcol(pdist), a))
+
+        entropyloss = - mean(ent_lpdf[1, :])
+        policyloss = - mean(d .* Ψ .* ent_lpdf[2,:]) 
+
+        return policyloss + learner.β * entropyloss 
+    end
+
+    isfinite(pval) || @warn "Policy loss is $pval"
+
+    try
+        Flux.update!(learner.model, vgrads[1], pgrads[1])
+    catch e
+        throw(GradientException(learner.model, statesdata, actions, nothing, e, nothing, 1, length(rewards), (learner.λ * learner.γ).^range(0, length(rewards) - 1), grads))
+    end
+end
