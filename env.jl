@@ -105,3 +105,44 @@ end
 istruncated(e::PendulumEnv) = e.currstep > e.max_steps
 nactions(::PendulumEnv) = 1
 spacedim(::PendulumEnv) = 3 
+
+mutable struct HopperEnv <: AbstractEnv
+    pyenv::PyCall.PyObject
+    currstate
+    lastreward
+    terminated::Bool
+    truncated::Bool
+
+    function HopperEnv()
+        Gym = PyCall.pyimport("gymnasium") # Use python-mujoco=2.3.3 to work with gymnasium
+        pyenv = Gym.make("Hopper-v4")
+        currstate, _ = pyenv.reset()
+
+        new(pyenv, currstate, nothing, false, false)
+    end
+end
+
+function RLEnvs.state_space(env::HopperEnv) 
+    os = env.pyenv.observation_space
+
+    reduce(×, DomainSets.Interval.(os.low, os.high))
+end
+
+function RLEnvs.action_space(env::HopperEnv)
+    as = env.pyenv.action_space
+
+    reduce(×, DomainSets.Interval.(as.low, as.high))
+end 
+
+RLEnvs.state(env::HopperEnv) = env.currstate
+RLEnvs.reward(env::HopperEnv) = env.lastreward 
+RLEnvs.is_terminated(env::HopperEnv) = env.terminated
+istruncated(env::HopperEnv) = env.truncated
+RLEnvs.reset!(env::HopperEnv) = env.pyenv.reset()
+
+nactions(env::HopperEnv) = action_space(env) |> DomainSets.dimension 
+spacedim(env::HopperEnv) = state_space(env) |> DomainSets.dimension 
+ 
+function (env::HopperEnv)(action) 
+    env.currstate, env.lastreward, env.terminated, env.truncated = env.pyenv.step(action) 
+end
