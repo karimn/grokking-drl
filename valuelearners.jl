@@ -1,4 +1,4 @@
-function step!(learner::AbstractValueLearner, s::AbstractStrategy, currstate; rng = Random.GLOBAL_RNG, usegpu = true)
+function step!(learner::Union{AbstractValueLearner, AbstractActorCriticLearner}, s::AbstractStrategy, currstate; rng = Random.GLOBAL_RNG, usegpu = true)
     action, _ = selectaction!(s, learner, currstate; rng, usegpu)
     learner.env(action)
     newstate = Vector{Float32}(state(learner.env))
@@ -7,7 +7,7 @@ function step!(learner::AbstractValueLearner, s::AbstractStrategy, currstate; rn
 
 end
 
-function train!(learner::AbstractValueLearner, trainstrategy::AbstractStrategy, evalstrategy::AbstractStrategy, experiences::AbstractBuffer; 
+function train!(learner::Union{AbstractValueLearner, AbstractActorCriticLearner}, trainstrategy::AbstractStrategy, evalstrategy::AbstractStrategy, experiences::AbstractBuffer; 
                 maxminutes::Int, maxepisodes::Int, goal_mean_reward, γ::Float32 = Float32(1.0), rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) 
     evalscores = []
     episodereward = Float32[]
@@ -79,12 +79,19 @@ function train!(learner::AbstractValueLearner, trainstrategy::AbstractStrategy, 
     return results, evaluate(evalstrategy, learner, env; nepisodes = 100, usegpu)
 end
 
-selectaction(trainstrategy::AbstractStrategy, learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractValueLearner = selectaction(trainstrategy, learner.onlinemodel, currstate; rng, usegpu)
-selectaction!(trainstrategy::AbstractStrategy, learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractValueLearner = selectaction!(trainstrategy, learner.onlinemodel, currstate; rng, usegpu)
+function selectaction(trainstrategy::AbstractStrategy, learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: Union{AbstractValueLearner, AbstractActorCriticLearner} 
+    selectaction(trainstrategy, learner.onlinemodel, currstate; rng, usegpu)
+end
 
-evaluate(evalstrategy::AbstractStrategy, learner::L, env::E; nepisodes = 1, usegpu = true) where {E <: AbstractEnv, L <: AbstractValueLearner} = evaluate(evalstrategy, learner.onlinemodel, env, nepisodes = nepisodes, usegpu = usegpu)
+function selectaction!(trainstrategy::AbstractStrategy, learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: Union{AbstractValueLearner, AbstractActorCriticLearner} 
+    selectaction!(trainstrategy, learner.onlinemodel, currstate; rng, usegpu)
+end
 
-function update_target_model!(l::L) where L <: AbstractValueLearner 
+function evaluate(evalstrategy::AbstractStrategy, learner::L, env::E; nepisodes = 1, usegpu = true) where {E <: AbstractEnv, L <: Union{AbstractValueLearner, AbstractActorCriticLearner}} 
+    evaluate(evalstrategy, learner.onlinemodel, env, nepisodes = nepisodes, usegpu = usegpu)
+end
+
+function update_target_model!(l::L) where L <: Union{AbstractValueLearner, AbstractActorCriticLearner}
     if l.τ < 1.0
         update_target_model!(l.targetmodel, l.onlinemodel, τ = l.τ)
     else
@@ -92,4 +99,4 @@ function update_target_model!(l::L) where L <: AbstractValueLearner
     end
 end
 
-save(learner::L, filename) where L <: AbstractValueLearner = save(learner.onlinemodel, filename)
+save(learner::L, filename) where L <: Union{AbstractValueLearner, AbstractActorCriticLearner} = save(learner.onlinemodel, filename)

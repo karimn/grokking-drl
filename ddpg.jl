@@ -3,7 +3,7 @@ const DDPGModel = DoubleNetworkActorCriticModel{FCDP, FCQV}
 𝒬(m::DDPGModel, state, action) = 𝒬(m.valuemodel, state, action)
 π(m::DDPGModel, state) = π(m.policymodel, state)
 
-struct DDPGLearner{E} <: AbstractValueLearner where {E <: AbstractEnv}
+struct DDPGLearner{E} <: AbstractActorCriticLearner where {E <: AbstractEnv}
     targetmodel::DDPGModel
     onlinemodel::DDPGModel
     env::E
