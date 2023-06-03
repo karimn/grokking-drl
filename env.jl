@@ -115,9 +115,10 @@ mutable struct HopperEnv <: AbstractEnv
     terminated::Bool
     truncated::Bool
 
-    function HopperEnv()
-        Gym = PyCall.pyimport("gymnasium") # Use python-mujoco=2.3.3 to work with gymnasium
-        pyenv = Gym.make("Hopper-v4")
+    function HopperEnv(version = 4)
+        # Use python-mujoco=2.3.3 to work with gymnasium: pyimport_conda("mujoco", "python-mujoco=2.3.3")
+        Gym = PyCall.pyimport("gymnasium") 
+        pyenv = Gym.make("Hopper-v$version")
         currstate, _ = pyenv.reset()
 
         new(pyenv, currstate, nothing, false, false)
