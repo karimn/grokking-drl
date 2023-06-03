@@ -38,3 +38,6 @@ function Flux.train!(m::DoubleNetworkActorCriticModel, states, actions, rewards,
 
     train!(m, states, flatactions, flatrewards, λ; valuelossweight, policylossweight, entropylossweight, γ)
 end
+
+update_target_policy_model!(to::DoubleNetworkActorCriticModel, from::DoubleNetworkActorCriticModel; τ = 1.0) = update_target_model!(to.policymodel, from.policymodel)
+update_target_value_model!(to::DoubleNetworkActorCriticModel, from::DoubleNetworkActorCriticModel; τ = 1.0) = update_target_model!(to.valuemodel, from.valuemodel)
