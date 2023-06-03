@@ -46,7 +46,7 @@ function train!(learner::Union{AbstractValueLearner, AbstractActorCriticLearner}
             currstate = newstate
 
             if readybatch(experiences) 
-                optimizemodel!(learner, experiences, γ, step, usegpu = usegpu)
+                optimizemodel!(learner, experiences, γ, sum(episodetimestep), usegpu = usegpu)
             end
 
             isterminal && break
