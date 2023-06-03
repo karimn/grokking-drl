@@ -4,18 +4,23 @@ struct DDPGLearner{E} <: AbstractActorCriticLearner where {E <: AbstractEnv}
     targetmodel::DDPGModel
     onlinemodel::DDPGModel
     env::E
+    experiences::ReplayBuffer
     updatemodelsteps::Int
     τ::Float32
 end
 
 environment(l::DDPGLearner) = l.env
+buffer(l::DDPGLearner) = l.experiences
+readybatch(l::DDPGLearner) = readybatch(l.experiences)
+
+function DDPGLearner(env::E, experiences::ReplayBuffer, dnargs...; updatemodelsteps, τ = 1.0, usegpu = true) where {E <: AbstractEnv} 
     nS, nA = spacedim(env), nactions(env)
     targetmodel = DDPGModel(nS, nA, dnargs...; usegpu)
     onlinemodel = DDPGModel(nS, nA, dnargs...; usegpu)
 
     update_target_model!(targetmodel, onlinemodel)
 
-    return DDPGLearner{E}(targetmodel, onlinemodel, env, updatemodelsteps, τ) 
+    return DDPGLearner{E}(targetmodel, onlinemodel, env, experiences, updatemodelsteps, τ) 
 end
 
 function optimizemodel!(learner::DDPGLearner, experiences::AbstractBuffer, γ, step; usegpu = true)

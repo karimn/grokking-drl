@@ -5,6 +5,9 @@ function step!(learner::Union{AbstractValueLearner, AbstractActorCriticLearner},
 
     return action, newstate, reward(learner.env), is_terminated(learner.env), istruncated(learner.env) 
 
+function train!(learner::AbstractActorCriticLearner, trainstrategy::AbstractStrategy, evalstrategy::AbstractStrategy; 
+                maxminutes::Int, maxepisodes::Int, goal_mean_reward, γ::Float32 = 1.0f0, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) 
+    train!(learner, trainstrategy, evalstrategy, buffer(learner); maxminutes, maxepisodes, goal_mean_reward, γ, rng, usegpu) 
 end
 
 function train!(learner::Union{AbstractValueLearner, AbstractActorCriticLearner}, trainstrategy::AbstractStrategy, evalstrategy::AbstractStrategy, experiences::AbstractBuffer; 
@@ -83,7 +86,9 @@ function selectaction(trainstrategy::AbstractStrategy, learner::L, currstate; rn
     selectaction(trainstrategy, learner.onlinemodel, currstate; rng, usegpu)
 end
 
-function selectaction!(trainstrategy::AbstractStrategy, learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: Union{AbstractValueLearner, AbstractActorCriticLearner} 
+function selectaction(trainstrategy::AbstractStrategy, learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: AbstractActorCriticLearner 
+    selectaction(trainstrategy, learner.onlinemodel, currstate; maxexploration = !readybatch(learner), rng, usegpu)
+end
     selectaction!(trainstrategy, learner.onlinemodel, currstate; rng, usegpu)
 end
 
