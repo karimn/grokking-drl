@@ -25,7 +25,7 @@ end
 
 function optimizemodel!(learner::DDPGLearner, experiences::AbstractBuffer, γ, step; usegpu = true)
     _..., batch = getbatch(experiences)
-    actions = (usegpu ? Flux.gpu(batch.a) : batch.a) |> permutedims 
+    actions = reduce(hcat, usegpu ? Flux.gpu(batch.a) : batch.a)  
 
     s = @pipe reduce(hcat, batch.s) |> (usegpu ? Flux.gpu(_) : _)
     sp = @pipe reduce(hcat, batch.sp) |> (usegpu ? Flux.gpu(_) : _) 
