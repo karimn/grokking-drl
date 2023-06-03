@@ -97,7 +97,9 @@ function RLEnvs.reset!(e::PendulumEnv)
     RLEnvs.reset!(e.innerenv)
 end
 
-function (e::PendulumEnv)(action) 
+(e::PendulumEnv)(action::AbstractArray) = e(only(action))
+
+function (e::PendulumEnv)(action::Float32) 
     e.currstep += 1
     act!(e.innerenv, action)
 end
