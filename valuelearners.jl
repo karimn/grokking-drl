@@ -92,7 +92,7 @@ end
     selectaction!(trainstrategy, learner.onlinemodel, currstate; rng, usegpu)
 end
 
-function evaluate(evalstrategy::AbstractStrategy, learner::L, env::E; nepisodes = 1, usegpu = true) where {E <: AbstractEnv, L <: Union{AbstractValueLearner, AbstractActorCriticLearner}} 
+function evaluate(evalstrategy::AbstractStrategy, learner::L, env::E = environment(learner); nepisodes = 1, usegpu = true) where {E <: AbstractEnv, L <: Union{AbstractValueLearner, AbstractActorCriticLearner}} 
     evaluate(evalstrategy, learner.onlinemodel, env, nepisodes = nepisodes, usegpu = usegpu)
 end
 
