@@ -52,7 +52,7 @@ function train!(learner::Union{AbstractValueLearner, AbstractActorCriticLearner}
         episode_elapsed = now() - episodestart
         trainingtime += episode_elapsed.value
 
-        evalscore, evalscoresd, evalsteps = evaluate(evalstrategy, learner, env; usegpu)
+        evalscore, evalscoresd, evalsteps = evaluate(evalstrategy, learner; usegpu)
         push!(evalscores, evalscore)     
 
         mean100evalscores = mean(last(episodereward, 100))
@@ -76,7 +76,7 @@ function train!(learner::Union{AbstractValueLearner, AbstractActorCriticLearner}
         end
     end
 
-    return results, evaluate(evalstrategy, learner, env; nepisodes = 100, usegpu)
+    return results, evaluate(evalstrategy, learner; nepisodes = 100, usegpu)
 end
 
 function selectaction(trainstrategy::AbstractStrategy, learner::L, currstate; rng = Random.GLOBAL_RNG, usegpu = true) where L <: Union{AbstractValueLearner, AbstractActorCriticLearner} 

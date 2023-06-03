@@ -33,3 +33,4 @@ function optimizemodel!(learner::DQNLearner, experiences::B, γ, step; usegpu = 
 end
 
 (learner::DQNLearner)(state) = learner.onlinemodel(state)
+environment(l::DQNLearner) = l.env

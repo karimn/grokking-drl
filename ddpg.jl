@@ -8,7 +8,7 @@ struct DDPGLearner{E} <: AbstractActorCriticLearner where {E <: AbstractEnv}
     τ::Float32
 end
 
-function DDPGLearner(env::E, dnargs...; updatemodelsteps, τ = 1.0, usegpu = true) where {E <: AbstractEnv} 
+environment(l::DDPGLearner) = l.env
     nS, nA = spacedim(env), nactions(env)
     targetmodel = DDPGModel(nS, nA, dnargs...; usegpu)
     onlinemodel = DDPGModel(nS, nA, dnargs...; usegpu)
