@@ -1,15 +1,17 @@
-mutable struct Buffer{MS} <: AbstractBuffer 
+update!(::B, ::Vector{Int}, ::Vector{Float32}) where {B <: AbstractBuffer} = nothing
+Base.length(b::B) where B <: AbstractBuffer = b.currsize
+
+mutable struct Buffer <: AbstractBuffer 
+    maxsize::Int
     idx::Int
     currsize::Int
     buffer::DataFrame
+
+    Buffer(maxsize::Int) = new(maxsize, 1, 0, DataFrame())
 end
 
-Buffer{MS}() where MS = Buffer{MS}(1, 0, DataFrame())
-
-update!(::B, ::Vector{Int}, ::Vector{Float32}) where {B <: AbstractBuffer} = nothing
-
-function store!(b::Buffer{MS}, s) where MS
-    if b.currsize >= MS 
+function store!(b::Buffer, s) 
+    if b.currsize >= b.maxsize 
         b.buffer = DataFrame() # Let's clear out all the old experiences
     end
 
@@ -19,41 +21,46 @@ function store!(b::Buffer{MS}, s) where MS
     b.currsize += 1 
 end
 
-Base.length(b::B) where B <: AbstractBuffer = b.currsize
-readybatch(b::Buffer{MS}) where MS = b.currsize == MS 
+readybatch(b::Buffer) = b.currsize == b.maxsize 
 
 function getbatch(b::Buffer) 
     return collect(1:b.currsize), repeat([1/b.currsize], b.currsize), b.buffer
 end
 
-mutable struct ReplayBuffer{MS, BS} <: AbstractBuffer 
+mutable struct ReplayBuffer <: AbstractBuffer 
+    maxsize::Int
+    batchsize::Int
+    warmupbatches::Int
     idx::Int
     currsize::Int
     buffer::DataFrame
+
+    ReplayBuffer(maxsize::Int, batchsize::Int, warmupbatches::Int = 5) = new(maxsize, batchsize, warmupbatches, 1, 0, DataFrame())
 end
 
-ReplayBuffer{MS, BS}() where {MS, BS} = ReplayBuffer{MS, BS}(1, 0, DataFrame())
-
-function store!(b::ReplayBuffer{MS, BS}, s) where {MS, BS}
-    if b.currsize < MS 
+function store!(b::ReplayBuffer, s) 
+    if b.currsize < b.maxsize 
         push!(b.buffer, s)
     else
         b.buffer[b.idx, :] = s 
     end
 
-    b.idx = (b.idx % MS) + 1
-    b.currsize = min(b.currsize + 1, MS)
+    b.idx = (b.idx % b.maxsize) + 1
+    b.currsize = min(b.currsize + 1, b.maxsize)
 end
 
-function getbatch(b::ReplayBuffer{MS, BS}; batchsize = BS) where {MS, BS} 
+function getbatch(b::ReplayBuffer; batchsize = b.batchsize)
     idxs = sample(1:nrow(b.buffer), batchsize, replace = false)
 
     return idxs, repeat([1 / batchsize], batchsize), b.buffer[idxs, :]
 end
 
-readybatch(b::ReplayBuffer{MS, BS}) where {MS, BS} = b.currsize >= 5 * BS 
+readybatch(b::ReplayBuffer) = b.currsize >= b.warmupbatches * b.batchsize 
 
-mutable struct PrioritizedReplayBuffer{MS, BS} <: AbstractBuffer
+mutable struct PrioritizedReplayBuffer <: AbstractBuffer
+    maxsize::Int
+    batchsize::Int
+    warmupbatches::Int
     idx::Int
     currsize::Int
     buffer::DataFrame
@@ -61,21 +68,23 @@ mutable struct PrioritizedReplayBuffer{MS, BS} <: AbstractBuffer
     beta::Float32
     betarate::Float32
     rankbased::Bool
+
+    function PrioritizedReplayBuffer(maxsize::Int, batchsize::Int, warmupbatches::Int = 5; alpha::Float32, beta::Float32, betarate::Float32, rankbased = false) 
+        new(maxsize, batchsize, warmupbatches, 1, 0, DataFrame(), alpha, beta, betarate, rankbased) 
+    end
 end
 
-PrioritizedReplayBuffer{MS, BS}(;alpha::Float32, beta::Float32, betarate::Float32, rankbased = false) where {MS, BS} = PrioritizedReplayBuffer{MS, BS}(1, 0, DataFrame(), alpha, beta, betarate, rankbased) 
-
-function store!(b::PrioritizedReplayBuffer{MS, BS}, s) where {MS, BS}
+function store!(b::PrioritizedReplayBuffer, s)
     s = (s..., priority = b.currsize > 0 ? maximum(b.buffer.priority) : 1.0)
 
-    if b.currsize < MS 
+    if b.currsize < b.maxsize 
         push!(b.buffer, s)
     else
         b.buffer[b.idx, :] = s 
     end
 
-    b.idx = (b.idx % MS) + 1
-    b.currsize = min(b.currsize + 1, MS)
+    b.idx = (b.idx % b.maxsize) + 1
+    b.currsize = min(b.currsize + 1, b.maxsize)
 end
 
 function update!(b::PrioritizedReplayBuffer, idxs::Vector{Int}, tderrors::Vector{Float32})
@@ -86,9 +95,9 @@ function update!(b::PrioritizedReplayBuffer, idxs::Vector{Int}, tderrors::Vector
     b.rankbased && sort!(b.buffer, :priority, rev = true)
 end
 
-readybatch(b::PrioritizedReplayBuffer{MS, BS}) where {MS, BS} = b.currsize >= 5 * BS 
+readybatch(b::PrioritizedReplayBuffer) = b.currsize >= b.warmupbatches * b.batchsize 
 
-function getbatch(b::PrioritizedReplayBuffer{MS, BS}; batchsize = BS) where {MS, BS} 
+function getbatch(b::PrioritizedReplayBuffer; batchsize = b.batchsize)
     b.beta = min(1.0, b.beta / b.betarate)
 
     priorities = b.rankbased ? 1 ./ (collect(range(1, b.currsize)) .+ 1) : b.buffer.priority .+ 1e-6
