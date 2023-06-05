@@ -58,9 +58,9 @@ function train!(learner::Union{AbstractValueLearner, AbstractActorCriticLearner}
         evalscore, evalscoresd, evalsteps = evaluate(evalstrategy, learner; usegpu)
         push!(evalscores, evalscore)     
 
-        mean100evalscores = mean(last(episodereward, 100))
+        mean100evalscores = mean(last(evalscores, 100))
 
-        push!(results, EpisodeResult(sum(episodetimestep), mean100evalscores, Statistics.mean(last(evalscores, 100))))
+        push!(results, EpisodeResult(sum(episodetimestep), mean(last(episodereward, 100)), mean100evalscores)) 
 
         @debug "Episode completed" episode = ep steps=step evalscore evalscoresd evalsteps mean100evalscores
 
