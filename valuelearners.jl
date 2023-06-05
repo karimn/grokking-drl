@@ -27,31 +27,29 @@ function train!(learner::Union{AbstractValueLearner, AbstractActorCriticLearner}
 
         reset!(learner.env)
 
-        currstate, isterminal = Vector{Float32}(state(learner.env)), is_terminated(learner.env)
+        currstate, isterminal, truncated = Vector{Float32}(state(learner.env)), is_terminated(learner.env), istruncated(learner.env)
         push!(episodereward, 0)
         push!(episodetimestep, 0)
         push!(episodeexploration, 0)
 
         step = 0
 
-        while true
+        while !isterminal && !truncated 
             step += 1
 
             # Interaction step
-            action, newstate, curr_reward, isterminal, istruncated = step!(learner, trainstrategy, currstate; rng, usegpu) 
+            action, newstate, curr_reward, isterminal, truncated = step!(learner, trainstrategy, currstate; rng, usegpu) 
 
             episodereward[end] += curr_reward 
             episodetimestep[end] += 1
             episodeexploration[end] += 1
 
-            store!(experiences, (s = currstate, a = action, r = curr_reward, sp = newstate, failure = isterminal && !istruncated))
+            store!(experiences, (s = currstate, a = action, r = curr_reward, sp = newstate, failure = isterminal && !truncated))
             currstate = newstate
 
             if readybatch(experiences) 
                 optimizemodel!(learner, experiences, γ, sum(episodetimestep), usegpu = usegpu)
             end
-
-            isterminal && break
         end
 
         episode_elapsed = now() - episodestart
