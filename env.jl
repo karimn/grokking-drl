@@ -108,20 +108,20 @@ istruncated(e::PendulumEnv) = e.currstep > e.max_steps
 nactions(::PendulumEnv) = 1
 spacedim(::PendulumEnv) = 3 
 
-mutable struct HopperEnv <: AbstractEnv
+mutable struct HopperEnv{T} <: AbstractEnv
     pyenv::PyCall.PyObject
-    currstate
-    lastreward
+    currstate::Vector{T}
+    lastreward::Union{T, Nothing}
     terminated::Bool
     truncated::Bool
 
-    function HopperEnv(version = 4)
+    function HopperEnv{T}(version = 4) where T
         # Use python-mujoco=2.3.3 to work with gymnasium: pyimport_conda("mujoco", "python-mujoco=2.3.3")
         Gym = PyCall.pyimport("gymnasium") 
         pyenv = Gym.make("Hopper-v$version")
         currstate, _ = pyenv.reset()
 
-        new(pyenv, currstate, nothing, false, false)
+        new{T}(pyenv, currstate, nothing, false, false)
     end
 end
 
