@@ -35,7 +35,7 @@ function evaluate(strategy::AbstractStrategy, m::AbstractModel, env::AbstractEnv
             steps[end] += 1
             a, _ = selectaction(strategy, m, s, rng = rng, usegpu = usegpu)
             env(a)
-            s, r, d = state(env), reward(env), is_terminated(env)
+            s, r, d = state(env), reward(env), is_terminated(env) || istruncated(env)
             rs[end] += r
         end
     end
