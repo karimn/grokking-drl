@@ -45,7 +45,7 @@ function optimizemodel!(learner::TD3Learner, experiences::AbstractBuffer, γ, to
     noisy_argmax_a_q_sp = clamp.(argmax_a_q_sp .+ a_noise, -1, 1)
 
     max_a_q_sp₁, max_a_q_sp₂ = vec.(𝒬(learner.targetmodel, sp, noisy_argmax_a_q_sp))
-    max_a_q_sp = min(max_a_q_sp₁, max_a_q_sp₂)
+    @CUDA.allowscalar max_a_q_sp = min(max_a_q_sp₁, max_a_q_sp₂)
 
     if usegpu
         target_q_sa = Flux.gpu(batch.r) + γ * max_a_q_sp .* Flux.gpu(.!batch.failure)
@@ -57,14 +57,19 @@ function optimizemodel!(learner::TD3Learner, experiences::AbstractBuffer, γ, to
 
     isfinite(vval) || @warn "Value loss is $vval"
 
+    #save(learner.onlinemodel, "temp-data/td3_checkpoint.jld2"; vgrads)
+
     Flux.update!(learner.onlinemodel, vgrads[1])
 
     if totalsteps % learner.train_policy_model_steps == 0
+
         # It's important to get gradients for and update the parameters of the policy model *only*. Don't use learner.onlinemodel as above. I think that makes us update
         # both the policy and value models.
         pval, pgrads = Flux.withgradient((pm, vm) -> - mean(𝒬₁(vm, s, π(pm, s))), learner.onlinemodel.policymodel, learner.onlinemodel.valuemodel) 
 
         isfinite(pval) || @warn "Policy loss is $pval"
+
+        #save(learner.onlinemodel, "temp-data/td3_checkpoint.jld2"; vgrads, pgrads)
 
         Flux.update!(learner.onlinemodel.opt.policymodel, learner.onlinemodel.policymodel, pgrads[1])
     end
