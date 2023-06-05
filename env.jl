@@ -141,11 +141,16 @@ RLEnvs.state(env::HopperEnv) = env.currstate
 RLEnvs.reward(env::HopperEnv) = env.lastreward 
 RLEnvs.is_terminated(env::HopperEnv) = env.terminated
 istruncated(env::HopperEnv) = env.truncated
-RLEnvs.reset!(env::HopperEnv) = env.pyenv.reset()
+function RLEnvs.reset!(env::HopperEnv) 
+    env.pyenv.reset()
+    env.terminated, env.truncated = false, false
+end
 
 nactions(env::HopperEnv) = action_space(env) |> DomainSets.dimension 
 spacedim(env::HopperEnv) = state_space(env) |> DomainSets.dimension 
  
 function (env::HopperEnv)(action) 
+    @assert action ∈ action_space(env)
+
     env.currstate, env.lastreward, env.terminated, env.truncated = env.pyenv.step(action) 
 end
