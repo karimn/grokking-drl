@@ -176,9 +176,9 @@ version = "0.5.0"
 
 [[deps.ChainRules]]
 deps = ["Adapt", "ChainRulesCore", "Compat", "Distributed", "GPUArraysCore", "IrrationalConstants", "LinearAlgebra", "Random", "RealDot", "SparseArrays", "Statistics", "StructArrays"]
-git-tree-sha1 = "0266ee4ffeeac8405ab07c49252c144616fe825d"
+git-tree-sha1 = "82e2d776be8bef478792d6cba65b06b16952f8ba"
 uuid = "082447d4-558c-5d27-93f4-14fc19e9eca2"
-version = "1.49.1"
+version = "1.50.0"
 
 [[deps.ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra", "SparseArrays"]
@@ -218,9 +218,9 @@ version = "0.12.10"
 
 [[deps.CommonRLInterface]]
 deps = ["Tricks"]
-git-tree-sha1 = "11109fb3abcce75cb3ca74ff8f4f57c7370261f9"
+git-tree-sha1 = "6c7d1ebb157fdf0f696698ef01946fe93c9efff4"
 uuid = "d842c3ba-07a1-494f-bbec-f5741b0a3e98"
-version = "0.3.2"
+version = "0.3.3"
 
 [[deps.CommonRLSpaces]]
 deps = ["FillArrays", "IntervalSets", "Random", "Reexport", "StaticArrays"]
@@ -360,9 +360,9 @@ version = "1.1.0"
 
 [[deps.DiffRules]]
 deps = ["IrrationalConstants", "LogExpFunctions", "NaNMath", "Random", "SpecialFunctions"]
-git-tree-sha1 = "3d6d95e5f728741d74f121b9d0948c7372eee4b7"
+git-tree-sha1 = "23163d55f885173722d1e4cf0f6110cdbaf7e272"
 uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
-version = "1.15.0"
+version = "1.15.1"
 
 [[deps.Distances]]
 deps = ["LinearAlgebra", "SparseArrays", "Statistics", "StatsAPI"]
@@ -618,9 +618,9 @@ uuid = "92d709cd-6900-40b7-9082-c6be49f344b6"
 version = "0.2.2"
 
 [[deps.IterTools]]
-git-tree-sha1 = "fa6287a4469f5e048d763df38279ee729fbd44e5"
+git-tree-sha1 = "4ced6667f9974fc5c5943fa5e2ef1ca43ea9e450"
 uuid = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
-version = "1.4.0"
+version = "1.8.0"
 
 [[deps.IteratorInterfaceExtensions]]
 git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
