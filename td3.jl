@@ -25,7 +25,7 @@ function TD3Learner(env::E, experiences::ReplayBuffer, dnargs...;
     targetmodel = TD3Model(nS, nA, dnargs...; usegpu)
     onlinemodel = TD3Model(nS, nA, dnargs...; usegpu)
 
-    update_target_model!(targetmodel, onlinemodel)
+    update_target_model!(targetmodel, onlinemodel, τ = 1.0)
 
     return TD3Learner{E}(targetmodel, onlinemodel, env, experiences, update_policy_model_steps, update_value_model_steps, train_policy_model_steps, policy_noise_ratio, policy_noise_clip_ratio, τ) 
 end

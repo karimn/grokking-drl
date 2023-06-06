@@ -18,7 +18,7 @@ function DDPGLearner(env::E, experiences::ReplayBuffer, dnargs...; updatemodelst
     targetmodel = DDPGModel(nS, nA, dnargs...; usegpu)
     onlinemodel = DDPGModel(nS, nA, dnargs...; usegpu)
 
-    update_target_model!(targetmodel, onlinemodel)
+    update_target_model!(targetmodel, onlinemodel, τ = 1.0)
 
     return DDPGLearner{E}(targetmodel, onlinemodel, env, experiences, updatemodelsteps, τ) 
 end
