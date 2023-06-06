@@ -20,7 +20,7 @@ function FCDP(inputdims::Int, outputdims::Int, hiddendims::Vector{Int} = [32, 32
     return FCDP(modelchain)
 end
 
-π(m::FCDP, state) = @pipe m.model(state) # |> m.rescalefn 
+π(m::FCDP, state) = m.model(state) 
 
 function DoubleNetworkActorCriticModel{FCDP, VM}(ninputdims::Int, noutputdims::Int, policyhiddendims::Vector{Int}, valuehiddendims::Vector{Int}, policyopt::Flux.Optimise.AbstractOptimiser, valueopt::Flux.Optimise.AbstractOptimiser;
                                                  usegpu = true) where {VM <: AbstractValueModel}
