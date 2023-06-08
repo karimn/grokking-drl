@@ -34,7 +34,8 @@ const usegpu = true
 const γ = 0.99f0 
 
 env = PendulumEnv((-1, 1), max_steps = 200, T = Float32)
-hopperenv = HopperEnv{Float32}()
+hopperenv = gymenv"Hopper-v4"
+cheetahenv = gymenv"HalfCheetah-v4" 
 
 #logger = Logging.ConsoleLogger(stdout, Logging.Debug)
 #oldlogger = Logging.global_logger(logger)

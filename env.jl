@@ -108,48 +108,52 @@ istruncated(e::PendulumEnv) = e.currstep > e.max_steps
 nactions(::PendulumEnv) = 1
 spacedim(::PendulumEnv) = 3 
 
-mutable struct HopperEnv{T} <: AbstractEnv
+mutable struct GymnasiumEnv{T} <: AbstractEnv
     pyenv::PyCall.PyObject
     currstate::Vector{T}
     lastreward::Union{T, Nothing}
     terminated::Bool
     truncated::Bool
 
-    function HopperEnv{T}(version = 4) where T
+    function GymnasiumEnv{T}(envstr::AbstractString) where T
         # Use python-mujoco=2.3.3 to work with gymnasium: pyimport_conda("mujoco", "python-mujoco=2.3.3")
         Gym = PyCall.pyimport("gymnasium") 
-        pyenv = Gym.make("Hopper-v$version")
+        pyenv = Gym.make(envstr)
         currstate, _ = pyenv.reset()
 
         new{T}(pyenv, currstate, nothing, false, false)
     end
 end
 
-function RLEnvs.state_space(env::HopperEnv) 
+macro gymenv_str(e::AbstractString) 
+    GymnasiumEnv{Float32}(e)
+end
+
+function RLEnvs.state_space(env::GymnasiumEnv) 
     os = env.pyenv.observation_space
 
     reduce(×, DomainSets.Interval.(os.low, os.high))
 end
 
-function RLEnvs.action_space(env::HopperEnv)
+function RLEnvs.action_space(env::GymnasiumEnv)
     as = env.pyenv.action_space
 
     reduce(×, DomainSets.Interval.(as.low, as.high))
 end 
 
-RLEnvs.state(env::HopperEnv) = env.currstate
-RLEnvs.reward(env::HopperEnv) = env.lastreward 
-RLEnvs.is_terminated(env::HopperEnv) = env.terminated
-istruncated(env::HopperEnv) = env.truncated
-function RLEnvs.reset!(env::HopperEnv) 
+RLEnvs.state(env::GymnasiumEnv) = env.currstate
+RLEnvs.reward(env::GymnasiumEnv) = env.lastreward 
+RLEnvs.is_terminated(env::GymnasiumEnv) = env.terminated || env.truncated
+istruncated(env::GymnasiumEnv) = env.truncated
+function RLEnvs.reset!(env::GymnasiumEnv) 
     env.pyenv.reset()
     env.terminated, env.truncated = false, false
 end
 
-nactions(env::HopperEnv) = action_space(env) |> DomainSets.dimension 
-spacedim(env::HopperEnv) = state_space(env) |> DomainSets.dimension 
+nactions(env::GymnasiumEnv) = action_space(env) |> DomainSets.dimension 
+spacedim(env::GymnasiumEnv) = state_space(env) |> DomainSets.dimension 
  
-function (env::HopperEnv)(action) 
+function (env::GymnasiumEnv)(action) 
     @assert action ∈ action_space(env)
 
     env.currstate, env.lastreward, env.terminated, env.truncated = env.pyenv.step(action) 
