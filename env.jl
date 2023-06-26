@@ -154,7 +154,9 @@ nactions(env::GymnasiumEnv) = action_space(env) |> DomainSets.dimension
 spacedim(env::GymnasiumEnv) = state_space(env) |> DomainSets.dimension 
  
 function (env::GymnasiumEnv)(action) 
-    @assert action ∈ action_space(env)
+    if action ∉ action_space(env)
+        throw(DomainError(action, "action must fall within an environment's action space"))
+    end
 
     env.currstate, env.lastreward, env.terminated, env.truncated = env.pyenv.step(action) 
 end
