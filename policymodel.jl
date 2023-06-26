@@ -12,6 +12,7 @@ end
 
 function evaluate(m::M, env::AbstractEnv; nepisodes = 1, greedy = true, rng::AbstractRNG = Random.GLOBAL_RNG, usegpu = true) where M <: AbstractPolicyModel
     rs = []
+    steps = []
 
     env = deepcopy(env)
 
@@ -19,16 +20,19 @@ function evaluate(m::M, env::AbstractEnv; nepisodes = 1, greedy = true, rng::Abs
         reset!(env)
         s, d = state(env), false
         push!(rs, 0)
+        push!(steps, 0)
 
         while !d 
+            steps[end] += 1
             a = greedy ? selectgreedyaction(m, s; usegpu) : selectaction(m, s; rng, usegpu)
-            env(only(a))
-            s, r, d = state(env), reward(env), is_terminated(env)
+            #env(only(a)) 
+            env(a) 
+            s, r, d = state(env), reward(env), is_terminated(env) || istruncated(env)
             rs[end] += r
         end
     end
 
-    return mean(rs), std(rs)
+    return mean(rs), std(rs), mean(steps)
 end
 
 
