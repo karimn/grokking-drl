@@ -115,10 +115,10 @@ mutable struct GymnasiumEnv{T} <: AbstractEnv
     terminated::Bool
     truncated::Bool
 
-    function GymnasiumEnv{T}(envstr::AbstractString) where T
+    function GymnasiumEnv{T}(envstr::AbstractString; rendermode = nothing) where T
         # Use python-mujoco=2.3.3 to work with gymnasium: pyimport_conda("mujoco", "python-mujoco=2.3.3")
         Gym = PyCall.pyimport("gymnasium") 
-        pyenv = Gym.make(envstr)
+        pyenv = Gym.make(envstr, render_mode = rendermode)
         currstate, _ = pyenv.reset()
 
         new{T}(pyenv, currstate, nothing, false, false)
