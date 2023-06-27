@@ -14,6 +14,15 @@ function update_target_model!(to::M, from::M; τ) where {M <: AbstractModel}
     return to 
 end
 
+const GaussianPolicy{T, V} = Distributions.MvNormal{T, PDMats.PDiagMat{T, V}, V}
+
+multiple_normals(μ, σ, outputdims) = @pipe vcat(μ, σ) |> 
+    Flux.cpu |> 
+    eachcol |> 
+    reshape.(_, outputdims, :) |> 
+    permutedims.(_) |> 
+    [[Distributions.Normal(c...) for c in eachcol(datarow)] for datarow in _]
+
 function calcgaes(values, rewards, λ_discounts; N = 1, γ = 1.0)
     T = length(rewards) ÷ N
 
