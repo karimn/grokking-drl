@@ -44,8 +44,7 @@ function optimizemodel!(learner::TD3Learner, experiences::AbstractBuffer, γ, to
     argmax_a_q_sp = π(learner.targetmodel, sp)
     noisy_argmax_a_q_sp = clamp.(argmax_a_q_sp .+ a_noise, -1, 1)
 
-    max_a_q_sp₁, max_a_q_sp₂ = vec.(𝒬(learner.targetmodel, sp, noisy_argmax_a_q_sp))
-    @CUDA.allowscalar max_a_q_sp = min(max_a_q_sp₁, max_a_q_sp₂)
+    max_a_q_sp = min𝒬(learner.targetmodel, sp, noisy_argmax_a_q_sp)
 
     if usegpu
         target_q_sa = Flux.gpu(batch.r) + γ * max_a_q_sp .* Flux.gpu(.!batch.failure)
