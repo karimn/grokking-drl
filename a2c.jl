@@ -35,7 +35,7 @@ opt(l::A2CLearner) = l.modelopt
 
 function _step!(learner::A2CLearner{E}, action; env) where E <: AbstractAsyncEnv
     env(action)
-    newstate = Flux.cpu.(state(env))
+    newstate = Flux.cpu(state(env))
 
     return action, newstate, reward(env), is_terminated(env), istruncated(env)
 end
@@ -99,15 +99,11 @@ function train!(learner::A2CLearner; maxminutes::Int, maxepisodes::Int, goal_mea
                 prevlearner = deepcopy(learner)
                 prevcontext = (deepcopy(states), deepcopy(actions), deepcopy(rewards))
 
-                #@debug "Pre" isterminal states actions rewards
-
                 try
                     optimizemodel!(learner, states, actions, rewards; usegpu) 
                 catch e
                     throw(CorruptedNetworkException(prevlearner, prevcontext..., innerex = e))
                 end
-
-                #@debug "Post" states actions rewards
 
                 any(p -> any(isnan, p), Flux.params(learner.model)) && throw(CorruptedNetworkException(prevlearner, prevcontext...))
 
@@ -158,7 +154,7 @@ function train!(learner::A2CLearner; maxminutes::Int, maxepisodes::Int, goal_mea
 end
 
 function optimizemodel!(learner::A2CLearner{E}, states, actions, rewards; usegpu = true) where E <: AbstractAsyncEnv
-    statesdata = @pipe map(t -> reduce(hcat, t), states) |> reduce(hcat, _) |> (usegpu ? Flux.gpu(_) : _) 
+    statesdata = @pipe mapreduce(t -> reduce(hcat, t), hcat, states) |> (usegpu ? Flux.gpu(_) : _) 
 
     laststates = reduce(hcat, state(learner.env))
     failures = is_terminateds(learner.env) .&& .!istruncateds(learner.env)
