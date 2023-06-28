@@ -58,10 +58,12 @@ function RLEnvs.reset!(e::CartPoleEnv)
     RLEnvs.reset!(e.innerenv)
 end
 
-function (e::CartPoleEnv)(action) 
+function (e::CartPoleEnv)(action::Int) 
     e.currstep += 1
     act!(e.innerenv, action)
 end
+
+(e::CartPoleEnv)(action::Vector{Int}) = e(only(action))
 
 istruncated(e::CartPoleEnv) = e.currstep > e.max_steps
 nactions(::CartPoleEnv) = 2
