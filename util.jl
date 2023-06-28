@@ -14,7 +14,7 @@ function update_target_model!(to::M, from::M; τ) where {M <: AbstractModel}
     return to 
 end
 
-const GaussianPolicy{T, V} = Distributions.MvNormal{T, PDMats.PDiagMat{T, V}, V}
+#const GaussianPolicy{T, V} = Distributions.MvNormal{T, PDMats.PDiagMat{T, V}, V}
 
 multiple_normals(μ, σ, outputdims) = @pipe vcat(μ, σ) |> 
     Flux.cpu |> 
