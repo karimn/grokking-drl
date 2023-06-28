@@ -110,20 +110,23 @@ istruncated(e::PendulumEnv) = e.currstep > e.max_steps
 nactions(::PendulumEnv) = 1
 spacedim(::PendulumEnv) = 3 
 
+# For Box2D env, first install Conda.add("gymnasium[box2d]") and Conda.add("pygames") 
 mutable struct GymnasiumEnv{T} <: AbstractEnv
     pyenv::PyCall.PyObject
+    discrete_action::Bool
     currstate::Vector{T}
     lastreward::Union{T, Nothing}
     terminated::Bool
     truncated::Bool
 
     function GymnasiumEnv{T}(envstr::AbstractString; rendermode = nothing) where T
-        # Use python-mujoco=2.3.3 to work with gymnasium: pyimport_conda("mujoco", "python-mujoco=2.3.3")
+        # Use mujoco-python=2.3.3 to work with gymnasium: pyimport_conda("mujoco", "mujoco-python=2.3.3")
+        PyCall.pyimport_conda("mujoco", "mujoco-python=2.3.3")
         Gym = PyCall.pyimport("gymnasium") 
         pyenv = Gym.make(envstr, render_mode = rendermode)
         currstate, _ = pyenv.reset()
 
-        new{T}(pyenv, currstate, nothing, false, false)
+        new{T}(pyenv, :n ∈ keys(pyenv.action_space), currstate, nothing, false, false)
     end
 end
 
@@ -140,7 +143,7 @@ end
 function RLEnvs.action_space(env::GymnasiumEnv)
     as = env.pyenv.action_space
 
-    reduce(×, DomainSets.Interval.(as.low, as.high))
+    return env.discrete_action ? (0:(convert(Int, as.n) - 1)) : reduce(×, DomainSets.Interval.(as.low, as.high))
 end 
 
 RLEnvs.state(env::GymnasiumEnv) = env.currstate
