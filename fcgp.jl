@@ -33,7 +33,7 @@ end
 
 function Base.rand(rng::Random.AbstractRNG, m::FCGP, state; usegpu = true, ε = 1f-6)
     μ, σ = π(m, usegpu ? Flux.gpu(state) : state)
-    z = Flux.ignore(() -> randn(rng, Float32, size(μ)))
+    z = Flux.ignore_derivatives(() -> randn(rng, Float32, size(μ)))
     pre_â = μ .+ σ .* (usegpu ? Flux.gpu(z) : z) 
     â = m.outactfn.(pre_â)
 

@@ -160,7 +160,10 @@ function optimizemodel!(learner::SACLearner, γ, totalsteps; rng::Random.Abstrac
 
     Flux.update!(learner.policymodelopt, learner.policymodel, pgrads[1])
 
+    # Training temperature (α)
+
     if !learner.fixedα
+        # Not sure why but in the Grokking DRL book the objective function uses log(α) instead of α. That's not how it is done in the self-tunning SAC paper.
         α_target = logπ_s .+ learner.targetentropy 
         αval, αgrads = Flux.withgradient(α -> -mean(only(α) * α_target), learner.α)
 

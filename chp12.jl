@@ -24,10 +24,12 @@ include("fctqv.jl")
 include("policymodel.jl")
 include("doublenetworkac.jl")
 include("fcdp.jl")
+include("fcgp.jl")
 include("strategy.jl")
 include("valuelearners.jl")
 include("ddpg.jl")
 include("td3.jl")
+include("sac.jl")
 
 const numlearners = 5
 const usegpu = true 
@@ -37,18 +39,17 @@ env = PendulumEnv((-1, 1), max_steps = 200, T = Float32)
 hopperenv = gymenv"Hopper-v4"
 cheetahenv = gymenv"HalfCheetah-v4" 
 
-#logger = Logging.ConsoleLogger(stdout, Logging.Debug)
-#oldlogger = Logging.global_logger(logger)
-#Logging.shouldlog(::Logging.ConsoleLogger, level, _module::Module, group, id) = nameof(_module) == :Main
+logger = Logging.ConsoleLogger(stdout, Logging.Debug)
+oldlogger = Logging.global_logger(logger)
+Logging.shouldlog(::Logging.ConsoleLogger, level, _module::Module, group, id) = nameof(_module) == :Main
 #filelogger = LoggingExtras.MinLevelLogger(LoggingExtras.FileLogger("td3.txt"), Logging.LogLevel(-1001))
 #Logging.shouldlog(::LoggingExtras.FileLogger, level, _module::Module, group, id) = nameof(_module) != :ChainRules
 
-#Logging.with_logger(filelogger) do
-    # learner = TD3Learner(hopperenv, ReplayBuffer(1_000_000, 256), [256, 256], [256, 256], Flux.Adam(0.0001), Flux.Adam(0.0001); 
-    #                      update_value_model_steps = 2, update_policy_model_steps = 2, train_policy_model_steps = 2, τ = 0.01, policy_noise_ratio = 0.1f0, policy_noise_clip_ratio = 0.5f0, usegpu) 
-    # results, (evalscore, _) = train!(learner, NormalNoiseDecayStrategy(decaysteps = 200_000), ContinuousGreedyStrategy(); γ, maxminutes = 300, maxepisodes = 10_000, goal_mean_reward = 1500, usegpu) 
+learner = SACLearner(cheetahenv, ReplayBuffer(1_000_000, 256, 10), [256, 256], [256, 256], Flux.Adam(0.0003), Flux.Adam(0.0005), Flux.Adam(0.001); 
+                     update_target_steps = 1, τ = 0.001, usegpu = true) 
+results, (evalscore, _) = train!(learner; γ, evalepisodes = 5, maxminutes = 300, maxepisodes = 10_000, goal_mean_reward = 2000, usegpu = true) 
 
-    # @info "Learning completed." evalscore
+#Logging.with_logger(filelogger) do
 #end 
 
 # DDPG
@@ -93,6 +94,34 @@ for _ in 1:numlearners
     learner = TD3Learner(hopperenv, ReplayBuffer(1_000_000, 256), [256, 256], [256, 256], Flux.Adam(0.0003), Flux.Adam(0.0003); 
                          update_value_model_steps = 2, update_policy_model_steps = 2, train_policy_model_steps = 2, τ = 0.01, policy_noise_ratio = 0.1f0, policy_noise_clip_ratio = 0.5f0, usegpu) 
     results, (evalscore, _) = train!(learner, NormalNoiseDecayStrategy(decaysteps = 200_000), ContinuousGreedyStrategy(); γ, maxminutes = 300, maxepisodes = 10_000, goal_mean_reward = 1500, usegpu) 
+
+    push!(dqnresults, results)
+
+    @info "Learning completed." evalscore
+
+    if evalscore >= bestscore
+        global bestscore = evalscore
+        global bestagent = learner 
+    end
+
+    next!(prog)
+end
+
+finish!(prog)
+
+# SAC 
+
+bestscore = 0
+bestagent = nothing
+dqnresults = []
+
+prog = Progress(numlearners)
+
+ex = nothing
+
+for _ in 1:numlearners
+    learner = SACLearner(cheetahenv, ReplayBuffer(1_000_000, 256, 10), [256, 256], [256, 256], Flux.Adam(0.0003), Flux.Adam(0.0005), Flux.Adam(0.001); update_target_steps = 1, τ = 0.001, usegpu) 
+    results, (evalscore, _) = train!(learner; γ, evalepisodes = 5, maxminutes = 300, maxepisodes = 10_000, goal_mean_reward = 2000, usegpu) 
 
     push!(dqnresults, results)
 
