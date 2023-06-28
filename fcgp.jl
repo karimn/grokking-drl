@@ -48,7 +48,20 @@ function Base.rand(rng::Random.AbstractRNG, m::FCGP, state; usegpu = true, ε = 
     return Flux.cpu(â), Flux.cpu(logπ)
 end
 
-
+Base.rand(m::FCGP, state; usegpu = true, ε = 1f-6) = Base.rand(Random.GLOBAL_RNG, m, state; usegpu, ε)
 
 selectaction(m::FCGP, state; rng::Random.AbstractRNG = Random.GLOBAL_RNG, use_gpu = true) = Base.rand(rng, m, usegpu ? Flux.gpu(state) : state) |> vec
 selectgreedyaction(m::FCGP, state; usegpu = true) = @pipe π(m, usegpu ? Flux.gpu(state) : state) |> first |> mean.(_) |> m.outactfn.(_) |> vec
+
+function save(m::FCGP, filename; args...)
+    JLD2.jldsave(filename; m = Flux.state(m), outactfn = m.outactfn, args...)
+end 
+
+function Flux.loadmodel!(m::FCGP, filename::AbstractString, otherargs...)
+    model_state, outactfn, other = JLD2.load(filename, "m", "outactfn", otherargs...)
+
+    Flux.loadmodel!(m, model_state)
+    # TODO need to write outactfn somehow. Can't do it if instant already created. Perhaps this should be done in a constructor.
+
+    return other
+end
