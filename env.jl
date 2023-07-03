@@ -155,7 +155,7 @@ function RLEnvs.reset!(env::GymnasiumEnv)
     env.terminated, env.truncated = false, false
 end
 
-nactions(env::GymnasiumEnv) = action_space(env) |> DomainSets.dimension 
+nactions(env::GymnasiumEnv) = env.discrete_action ? length(action_space(env)) : DomainSets.dimension(action_space(env)) 
 spacedim(env::GymnasiumEnv) = state_space(env) |> DomainSets.dimension 
  
 function (env::GymnasiumEnv)(action) 
