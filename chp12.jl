@@ -35,9 +35,11 @@ const numlearners = 5
 const usegpu = true 
 const γ = 0.99f0 
 
-env = PendulumEnv((-1, 1), max_steps = 200, T = Float32)
-hopperenv = gymenv"Hopper-v4"
-cheetahenv = gymenv"HalfCheetah-v4" 
+pendulumenv = PendulumEnv((-1, 1), max_steps = 200, T = Float32)
+hopperenv = GymnasiumEnv{Float32}("Hopper-v4")
+cheetahenv = GymnasiumEnv{Float32}("HalfCheetah-v4")
+# If I don't do this I end up with envs with the same initial state. Something needs to be done for deepcopying GymnasiumEnv
+lunarlanderenv = ParallelEnv([GymnasiumEnv{Float32}("LunarLander-v2") for _ in 1:nworkers])
 
 logger = Logging.ConsoleLogger(stdout, Logging.Debug)
 oldlogger = Logging.global_logger(logger)

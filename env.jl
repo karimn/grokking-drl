@@ -130,9 +130,9 @@ mutable struct GymnasiumEnv{T} <: AbstractEnv
     end
 end
 
-macro gymenv_str(e::AbstractString) 
-    GymnasiumEnv{Float32}(e)
-end
+# macro gymenv_str(e::AbstractString) 
+#     GymnasiumEnv{Float32}(e)
+# end
 
 function RLEnvs.state_space(env::GymnasiumEnv) 
     os = env.pyenv.observation_space
