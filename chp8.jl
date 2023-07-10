@@ -11,6 +11,7 @@ include("env.jl")
 include("abstract.jl")
 include("strategy.jl")
 include("buffers.jl")
+include("valuemodel.jl")
 include("fcq.jl")
 include("valuelearners.jl")
 
