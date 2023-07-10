@@ -120,8 +120,7 @@ mutable struct GymnasiumEnv{T} <: AbstractEnv
     truncated::Bool
 
     function GymnasiumEnv{T}(envstr::AbstractString; rendermode = nothing) where T
-        # Use mujoco-python=2.3.3 to work with gymnasium: pyimport_conda("mujoco", "mujoco-python=2.3.3")
-        PyCall.pyimport_conda("mujoco", "mujoco-python=2.3.3")
+        # set ENV["PYTHON"] to local python3 binary, build PyCall, and use pip to install needed packages: gymnasium, gymnasium[box2d], imageio, pygame.
         Gym = PyCall.pyimport("gymnasium") 
         pyenv = Gym.make(envstr, render_mode = rendermode)
         currstate, _ = pyenv.reset()
@@ -143,24 +142,29 @@ end
 function RLEnvs.action_space(env::GymnasiumEnv)
     as = env.pyenv.action_space
 
-    return env.discrete_action ? (0:(convert(Int, as.n) - 1)) : reduce(×, DomainSets.Interval.(as.low, as.high))
+    return env.discrete_action ? (1:(convert(Int, as.n))) : reduce(×, DomainSets.Interval.(as.low, as.high))
 end 
 
 RLEnvs.state(env::GymnasiumEnv) = env.currstate
 RLEnvs.reward(env::GymnasiumEnv) = env.lastreward 
 RLEnvs.is_terminated(env::GymnasiumEnv) = env.terminated || env.truncated
 istruncated(env::GymnasiumEnv) = env.truncated
+
 function RLEnvs.reset!(env::GymnasiumEnv) 
-    env.pyenv.reset()
-    env.terminated, env.truncated = false, false
+    env.currstate, _ = env.pyenv.reset()
+    env.terminated, env.truncated, env.lastreward = false, false, nothing
+
+    return env.currstate
 end
 
 nactions(env::GymnasiumEnv) = env.discrete_action ? length(action_space(env)) : DomainSets.dimension(action_space(env)) 
 spacedim(env::GymnasiumEnv) = state_space(env) |> DomainSets.dimension 
  
 function (env::GymnasiumEnv)(action) 
-    if action ∉ action_space(env)
-        throw(DomainError(action, "action must fall within an environment's action space"))
+    action ∉ action_space(env) && throw(DomainError(action, "action must fall within an environment's action space"))
+
+    if env.discrete_action
+        action -= 1
     end
 
     env.currstate, env.lastreward, env.terminated, env.truncated = env.pyenv.step(action) 
