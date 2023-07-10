@@ -5,32 +5,6 @@ struct FCQ <: AbstractValueModel
     lossfn
 end
 
-function CreateSimpleFCModel(::Type{M}, inputdim::Int, outputdim::Int, opt::Union{Nothing, Flux.Optimise.AbstractOptimiser} = nothing; hiddendims::Vector{Int}, actfn, lossfn, usegpu) where M <: AbstractModel
-    hiddenlayers = Vector{Any}(nothing, length(hiddendims) - 1)
-
-    for i in 1:(length(hiddendims) - 1)
-        hiddenlayers[i] = Flux.Dense(hiddendims[i] => hiddendims[i + 1], actfn)
-    end
-
-    modelchain = Flux.Chain(
-        Flux.Dense(inputdim => hiddendims[1], actfn), 
-        hiddenlayers..., 
-        Flux.Dense(hiddendims[end] => outputdim)
-    )
-        
-    if usegpu
-        modelchain = modelchain |> Flux.gpu
-    end
-
-    if opt ≢ nothing
-        opt = Flux.setup(opt, modelchain)
-
-        return M(modelchain, opt, lossfn)
-    else
-        return M(modelchain, lossfn)
-    end
-end
-
 function FCQ(inputdim::Int, outputdim::Int, valueopt::Flux.Optimise.AbstractOptimiser; hiddendims::Vector{Int} = [32, 32], actfn = Flux.relu, lossfn = (ŷ, y, args...) -> Flux.mse(ŷ, y), usegpu = true)
     return CreateSimpleFCModel(FCQ, inputdim, outputdim, valueopt; hiddendims, actfn, lossfn, usegpu)
 end
@@ -90,5 +64,3 @@ function save(m::M, filename) where M <: AbstractValueModel
     model = m.model |> Flux.cpu
     BSON.@save filename model
 end
-
-update!(to::M, from::M; τ = 1.0) where {M <: AbstractValueModel} = update!(to.model, from.model; τ)

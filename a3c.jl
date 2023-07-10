@@ -88,11 +88,10 @@ function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, goal_mea
                 currstate = newstate
 
                 if isterminal || (step - nstepstart >= learner.max_nsteps)
-                    # isterminal && @debug "Terminal state reached." workerid episode = nepisodes[] steps=step 
-                    # isterminal || @debug "Max steps reached." workerid episode = nepisodes[] steps=step 
-
                     if length(actions) > 1 
-                        localmodel = optimizemodel!(learner, localmodel, localenv, states, actions, rewards; usegpu)
+                        # Hog Wild!
+                        optimizemodel!(learner, states, actions, rewards, localenv, localmodel; λ = learner.λ, usegpu)
+                        localmodel = deepcopy(learner.model) 
                     end
 
                     empty!(states)
@@ -127,26 +126,4 @@ function train!(learner::A3CLearner; maxminutes::Int, maxepisodes::Int, goal_mea
     end
 
     return results, evaluate(learner.model, env; nepisodes = 100, usegpu)
-end
-
-function optimizemodel!(learner::A3CLearner, localmodel::M, env::AbstractEnv, states, actions, rewards; usegpu = true) where M <: AbstractActorCriticModel
-    statesdata = @pipe hcat(states...) |> 
-        (usegpu ? Flux.gpu(_) : _)
-
-    laststate = state(env)
-    failure = is_terminated(env) && !istruncated(env)
-
-    nextvalue = 𝒱(localmodel, usegpu ? Flux.gpu(laststate) : laststate) |> Flux.cpu |> first
-    push!(rewards, failure ? 0.0 : nextvalue)
-        
-    grads = Flux.withgradient(localmodel, statesdata, actions, rewards, learner.λ; γ = learner.γ, entropylossweight = learner.β)
-
-    try
-        # Asynchronous: Hog Wild!
-        Flux.update!(learner.modelopt, learner.model, grads[1])
-    catch e
-        throw(GradientException(learner.model, statesdata, actions, nothing, e, nothing, 1, length(rewards), (learner.λ * learner.γ).^range(0, length(rewards) - 1), grads))
-    end
-
-    return deepcopy(learner.model)   
 end

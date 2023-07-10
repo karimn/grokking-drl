@@ -4,7 +4,8 @@ struct EpisodeResult
     mean100evalscore
 end
 
-function update!(to::Flux.Chain, from::Flux.Chain; τ = 1.0)
+# All implementation of AbstractModel should have a @functor declaration
+function update_target_model!(to::M, from::M; τ) where {M <: AbstractModel}
     if τ > 0.0
         newparams = [(1 - τ) * toparam + τ * fromparam for (toparam, fromparam) in zip(Flux.params(to), Flux.params(from))]
         Flux.loadparams!(to, newparams)
@@ -12,6 +13,15 @@ function update!(to::Flux.Chain, from::Flux.Chain; τ = 1.0)
 
     return to 
 end
+
+#const GaussianPolicy{T, V} = Distributions.MvNormal{T, PDMats.PDiagMat{T, V}, V}
+
+multiple_normals(μ, σ, outputdims) = @pipe vcat(μ, σ) |> 
+    Flux.cpu |> 
+    eachcol |> 
+    reshape.(_, outputdims, :) |> 
+    permutedims.(_) |> 
+    [[Distributions.Normal(c...) for c in eachcol(datarow)] for datarow in _]
 
 function calcgaes(values, rewards, λ_discounts; N = 1, γ = 1.0)
     T = length(rewards) ÷ N
@@ -21,6 +31,8 @@ function calcgaes(values, rewards, λ_discounts; N = 1, γ = 1.0)
 
     return advs, gaes 
 end
+
+accumulate_right(op, xs) = reverse(accumulate(op, reverse(xs)))
 
 struct NaNParamException <: Base.Exception
     model::AbstractModel
@@ -62,10 +74,12 @@ struct NotFiniteLossException <: Base.Exception
     model::AbstractModel
     states
     actions 
-    rewards
+    oldlogπ
+    gaes
+    #=rewards
     returns
     discounts
-    λ_discounts 
+    λ_discounts=#
 end
 
 struct GradientException <: Base.Exception

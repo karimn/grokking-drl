@@ -12,9 +12,10 @@ using DataFrames
 
 include("util.jl")
 include("abstract.jl")
-include("cartpole.jl")
+include("env.jl")
 include("strategy.jl")
 include("buffers.jl")
+include("valuemodel.jl")
 include("fcq.jl")
 include("valuelearners.jl")
 
@@ -38,7 +39,7 @@ lk = ReentrantLock()
 
 for _ in 1:numlearners
     learner = DQNLearner{FCQ}(env, [512, 128], Flux.RMSProp(0.0005); epochs = 1, updatemodelsteps = 10, isdouble = true, usegpu)
-    buffer = ReplayBuffer{50_000, 64}()
+    buffer = ReplayBuffer(50_000, 64)
     results, (evalscore, _) = train!(learner, εGreedyStrategy(0.5), GreedyStrategy(), buffer; maxminutes, maxepisodes, usegpu)
 
     lock(lk) do

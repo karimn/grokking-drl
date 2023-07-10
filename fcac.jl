@@ -1,7 +1,8 @@
-struct FCAC <: AbstractActorCriticModel
+struct FCAC <: AbstractActorCriticModel # Fully connected actor-critic
     model::Flux.Chain
     lossfn
     nworkers::Int
+    outputdims::Int
 end
 
 @functor FCAC (model,)
@@ -18,7 +19,7 @@ function FCAC(inputdims::Int, outputdims::Int, hiddendims::Vector{Int} = [32, 32
         hiddenlayers..., 
          Flux.Parallel(
             vcat,
-            Flux.Chain(Flux.Dense(hiddendims[end] => outputdims), Flux.softmax),
+            Flux.Chain(Flux.Dense(hiddendims[end] => outputdims), Flux.Parallel(vcat, Flux.softmax, Flux.logsoftmax)),
             Flux.Dense(hiddendims[end] => 1)
         )
     )
@@ -27,34 +28,33 @@ function FCAC(inputdims::Int, outputdims::Int, hiddendims::Vector{Int} = [32, 32
         modelchain = modelchain |> Flux.gpu
     end
 
-    return FCAC(modelchain, lossfn, nworkers)
+    return FCAC(modelchain, lossfn, nworkers, outputdims)
 end
 
 (m::FCAC)(state) = m.model(state)
 𝒱(m::FCAC, state) = m(state)[end, :]
-π(m::FCAC, state) = m(state)[1:(end - 1), :]
+π(m::FCAC, state) = m(state)[1:(m.outputdims), :]
+logπ(m::FCAC, state) = m(state)[(m.outputdims + 1):(end - 1), :]
 ℒᵥ(m::FCAC, v̂, v) = m.lossfn(v̂, v)
 
 function ℒ(m::FCAC, states, actions, returns, rewards, discounts, λ_discounts; N, T, γ, valuelossweight = 1.0, policylossweight = 1.0, entropylossweight = 1.0)
     output = m(states) |> Flux.cpu
+    prob = output[1:(m.outputdims), :]
+    logprob = output[(m.outputdims + 1):(end - 1), :]
     values = output[end, :]
-    pdist = output[1:(end - 1), :]
 
     valueloss = ℒᵥ(m, values, returns[1:(end - N)])
 
-    discounted_gaes = nothing
+    entropyloss = - mean(- sum(prob .* logprob; dims = 1)) 
 
-    Flux.ignore_derivatives() do 
+    discounted_gaes = Flux.ignore_derivatives() do 
         values = vcat(values, rewards[(end - N + 1):end])
         _, gaes = calcgaes(values, rewards, λ_discounts; N, γ)
-        discounted_gaes = discounts' .* gaes 
+
+        return discounts' .* gaes 
     end
 
-    catdist = Distributions.Categorical.(copy(p) for p in eachcol(pdist))
-
-    entropyloss = - mean(Distributions.entropy.(catdist))
-
-    lpdf = reshape(Distributions.logpdf.(catdist, actions), N, :)
+    lpdf = reshape([lp[a] for (a, lp) in zip(actions, eachcol(logprob))], N, :)
     policyloss = - sum(lpdf .* discounted_gaes) / (N * (T - 1))
 
     return valuelossweight * valueloss + entropylossweight * entropyloss + policylossweight * policyloss 

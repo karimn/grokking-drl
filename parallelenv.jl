@@ -1,20 +1,21 @@
 struct ParallelEnv{E <: AbstractEnv} <: AbstractAsyncEnv 
-    env::E
     parallelenvs::Vector{E}
-    nworkers::Int
     inchannels::Vector{Channel}
     cmdchannels::Vector{Channel}
     workers::Vector{Task}
     terminated::Vector{Bool}
     truncated::Vector{Bool}
     states::Vector
-    rewards::Vector{Float32}
+    rewards::Vector{Union{Nothing, Float32}}
 end
 
-function ParallelEnv(e::E, nworkers::Int) where E <: AbstractEnv
+env_nworkers(e::ParallelEnv) = length(e.workers)
+
+function ParallelEnv(parallelenvs::Vector{E}) where E <: AbstractEnv
+    nworkers = length(parallelenvs)
     inchannels = [Channel(2) for _ in 1:nworkers]
     cmdchannels = [Channel(1) for _ in 1:nworkers]
-    parallelenvs = [deepcopy(e) for _ in 1:nworkers]
+
     envs_and_channels = zip(parallelenvs, inchannels, cmdchannels)
     workers = [@task envworker(wid, localenv, input = outch, output = inch) for (wid, (localenv, inch, outch)) in enumerate(envs_and_channels)]
 
@@ -25,16 +26,21 @@ function ParallelEnv(e::E, nworkers::Int) where E <: AbstractEnv
 
     schedule.(workers)
 
-    newenv = ParallelEnv{E}(e, parallelenvs, nworkers, inchannels, cmdchannels, workers, falses(nworkers), falses(nworkers), Vector(undef, nworkers) , Vector{Float32}(undef, nworkers))
+    newenv = ParallelEnv{E}(parallelenvs, inchannels, cmdchannels, workers, falses(nworkers), falses(nworkers), Vector(undef, nworkers) , Vector{Float32}(undef, nworkers))
 
     reset!(newenv)
 
     return newenv
 end
 
-ParallelEnv(e::ParallelEnv) = ParallelEnv(e.env, e.nworkers) 
+ParallelEnv(e::E, nworkers::Int) where E <: AbstractEnv = ParallelEnv([deepcopy(e) for _ in 1:nworkers])
+ParallelEnv(e::ParallelEnv) = ParallelEnv(innerenv(e), env_nworkers(e)) 
 
-innerenv(e::ParallelEnv) = e.env
+function Base.deepcopy_internal(env::ParallelEnv, ::IdDict)
+    ParallelEnv(deepcopy.(env.parallelenvs))
+end
+
+innerenv(e::ParallelEnv) = e.parallelenvs[1]
 
 function Base.put!(c::Channel, e::E) where E <: AbstractEnv 
     status = (state(e), reward(e), is_terminated(e), istruncated(e))
@@ -63,9 +69,9 @@ function envworker(wid::Int, localenv::E; input::Channel, output::Channel) where
     end
 end
 
-RLBase.action_space(e::ParallelEnv) = action_space(e.env)
+RLBase.action_space(e::ParallelEnv) = action_space(innerenv(e))
 RLBase.state(e::ParallelEnv) = e.states
-RLBase.state_space(e::ParallelEnv) = state_space(e.env)
+RLBase.state_space(e::ParallelEnv) = state_space(innerenv(e))
 RLBase.reward(e::ParallelEnv) = e.rewards
 RLBase.is_terminated(e::ParallelEnv) = any(e.terminated)
 istruncated(e::ParallelEnv) = any(e.truncated)
@@ -80,14 +86,25 @@ end
 
 RLBase.reset!(e::ParallelEnv) = reset!(e, :)  
 
+# BUG if the action are not the right size to broadcast the task will end up waiting and then break on the following action. The below assert should fix this.
 function (env::ParallelEnv)(actions) 
+    @assert length(actions) == env_nworkers(env)
+
     put!.(env.cmdchannels, :step)
     put!.(env.cmdchannels, actions)
     refreshinfo!(env)
 end
 
-nactions(e::ParallelEnv) = nactions(e.env) 
-spacedim(e::ParallelEnv) = spacedim(e.env) 
+function (env::ParallelEnv)(actions, i::Vector{Int}) 
+    @assert all(1 .<= i .<= env_nworkers(env)) 
+
+    put!.(env.cmdchannels[i], :step)
+    put!.(env.cmdchannels[i], actions)
+    refreshinfo!(env, i)
+end
+
+nactions(e::ParallelEnv) = nactions(innerenv(e))
+spacedim(e::ParallelEnv) = spacedim(innerenv(e)) 
 
 function refreshinfo!(e::ParallelEnv, i)
     put!.(e.cmdchannels[i], :query)
