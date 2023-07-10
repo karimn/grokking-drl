@@ -129,7 +129,6 @@ function train!(learner::A2CLearner; maxminutes::Int, maxepisodes::Int, goal_mea
                 episode += length(terminatedidx) 
                 push!(evalscores, evalscore)
 
-
                 wallclockelapsed = now() - trainstart
                 mean100evalscore = Statistics.mean(last(evalscores, 100))
                 push!(results, EpisodeResult(sum(episodetimestep), mean(last(episodereward, 100)), mean100evalscore))

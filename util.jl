@@ -32,6 +32,8 @@ function calcgaes(values, rewards, λ_discounts; N = 1, γ = 1.0)
     return advs, gaes 
 end
 
+accumulate_right(op, xs) = reverse(accumulate(op, reverse(xs)))
+
 struct NaNParamException <: Base.Exception
     model::AbstractModel
     #prevmodel::AbstractModel
@@ -72,10 +74,12 @@ struct NotFiniteLossException <: Base.Exception
     model::AbstractModel
     states
     actions 
-    rewards
+    oldlogπ
+    gaes
+    #=rewards
     returns
     discounts
-    λ_discounts 
+    λ_discounts=#
 end
 
 struct GradientException <: Base.Exception
