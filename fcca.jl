@@ -58,3 +58,5 @@ function get_predictions(m::FCCA, state, action)
 
     return [lp[a] for (lp, a) in zip(eachcol(lpmfmat), action)], -vec(sum(pmfmat .* lpmfmat, dims = 1)) 
 end
+
+save(m::FCCA, filename; args...) = JLD2.jldsave(filename; m = Flux.state(m), args...)
